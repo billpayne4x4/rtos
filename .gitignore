@@ -1,0 +1,91 @@
+# ── Rust & Cargo ───────────────────────────────────────────────────────────────
+/target/
+**/target/
+/**/*.rs.bk
+# If you want reproducible builds in this workspace, keep Cargo.lock committed.
+# Uncomment the next line only if you intentionally want to ignore it.
+Cargo.lock
+
+# Rust tooling caches
+/.cargo/.package-cache
+/.cargo/.crates2.json
+/.cargo/.crates.toml
+
+# rust-analyzer misc
+.rust-analyzer.json
+
+# ── JetBrains (IntelliJ / RustRover) ───────────────────────────────────────────
+/.idea/
+/out/
+/*.iml
+# IntelliJ HTTP client scratch files
+/.idea/httpRequests/
+/.idea/shelf/
+
+# ── VS Code ────────────────────────────────────────────────────────────────────
+/.vscode/
+/.vscode-test/
+/.history/
+/*.code-workspace
+
+# VS Code extensions that create local data
+/.VSCodeCounter/
+
+# ── QEMU / VM artifacts ────────────────────────────────────────────────────────
+*.iso
+*.img
+*.qcow
+*.qcow2
+*.vdi
+*.vmdk
+*.vhd
+*.vhdx
+*.bin
+*.rom
+*.map
+
+# ── Build byproducts (non-Cargo) ───────────────────────────────────────────────
+*.o
+*.a
+*.ll
+*.s
+*.asm
+*.lst
+*.hex
+*.elf
+*.map
+*.dSYM/
+*.pdb
+
+# ── Logs / temp ────────────────────────────────────────────────────────────────
+*.log
+*.tmp
+*.temp
+*.swp
+*.swo
+*.sw?
+*.bak
+
+# ── OS cruft ───────────────────────────────────────────────────────────────────
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+# Linux
+*~
+.nfs*
+
+# ── Misc tooling ───────────────────────────────────────────────────────────────
+/dist/
+/build/
+/.venv/
+/env/
+/node_modules/

@@ -1,0 +1,13 @@
+[package]
+name = "rtos"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+
+[[bin]]
+name = "rtos"
+path = "src/main.rs"
+test = false
+doctest = false
+bench = false

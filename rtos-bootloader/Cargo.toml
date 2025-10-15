@@ -6,6 +6,10 @@ edition = "2021"
 [dependencies]
 uefi = { version = "0.35", default-features = false }
 panic-abort = "0.3.2"
+rtkfmt = { path = "../libs/rtkfmt" }
+
+[build-dependencies]
+nasm-rs = "0.3.1"
 
 [[bin]]
 name = "bootx64"

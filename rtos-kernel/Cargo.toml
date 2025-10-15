@@ -4,11 +4,14 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-uefi = { version = "0.35", default-features = false }
-panic-abort = "0.3.2"
+x86_64 = "0.15.2"
+lazy_static = { version = "1.4", features = ["spin_no_std"] }
+
+[build-dependencies]
+nasm-rs = "0.3.1"
 
 [[bin]]
-name = "kernelx64"
+name = "rtos-kernel"
 path = "src/main.rs"
 test = false
 doctest = false

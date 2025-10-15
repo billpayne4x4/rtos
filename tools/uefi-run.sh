@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Usage: uefi-run.sh [dev|release] [boot_crate] [boot_bin] [boot_efi_name] [debug:on|off]
-profile="${1:-dev}"                       # dev | release
-boot_crate="${2:-rtos-bootloader}"        # bootloader workspace member
-boot_bin="${3:-bootx64}"                  # [[bin]].name in bootloader
-boot_efi_name="${4:-BOOTX64.EFI}"         # filename on ESP
-debug_mode="${5:-off}"                    # on | off
+profile="${1:-dev}"
+boot_crate="${2:-rtos-bootloader}"
+boot_bin="${3:-bootx64}"
+boot_efi_name="${4:-BOOTX64.EFI}"
+debug_mode="${5:-off}"
 target="x86_64-unknown-uefi"
 
 BUILD_ROOT="${BUILD_ROOT:-build}"
@@ -26,28 +25,48 @@ fi
 
 boot_efi="${CARGO_TARGET_DIR}/${target}/${out_dir}/${boot_bin}.efi"
 
-# ---- build KERNEL (UEFI app for now) ----------------------------------------
+# ---- build KERNEL (ELF) ------------------------------------------------------
 KERNEL_CRATE="rtos-kernel"
-KERNEL_BIN="kernelx64"
+KERNEL_BIN="rtos-kernel"
+KERNEL_TARGET="x86_64-unknown-none"
+
 KERNEL_BUILD_DIR="${BUILD_ROOT}/${KERNEL_CRATE}"
 export CARGO_TARGET_DIR="${KERNEL_BUILD_DIR}/target"
 mkdir -p "${CARGO_TARGET_DIR}"
 
 if [[ "$profile" == "release" ]]; then
-  cargo +nightly build -p "$KERNEL_CRATE" --release --target "$target" -Z build-std=core,compiler_builtins
+  cargo +nightly build -p "$KERNEL_CRATE" --release --target "$KERNEL_TARGET" -Z build-std=core,compiler_builtins
   k_out="release"
 else
-  cargo +nightly build -p "$KERNEL_CRATE" --target "$target" -Z build-std=core,compiler_builtins
+  cargo +nightly build -p "$KERNEL_CRATE" --target "$KERNEL_TARGET" -Z build-std=core,compiler_builtins
   k_out="debug"
 fi
 
-kernel_efi="${CARGO_TARGET_DIR}/${target}/${k_out}/${KERNEL_BIN}.efi"
+kernel_elf="${CARGO_TARGET_DIR}/${KERNEL_TARGET}/${k_out}/${KERNEL_BIN}"
 
-# ---- stage ESP ---------------------------------------------------------------
+# ---- fresh ESP staging -------------------------------------------------------
 ESP_DIR="${BOOT_BUILD_DIR}/esp"
+rm -rf "${ESP_DIR}"
 mkdir -p "${ESP_DIR}/EFI/BOOT"
-cp -f "${boot_efi}"   "${ESP_DIR}/EFI/BOOT/${boot_efi_name}"
-cp -f "${kernel_efi}" "${ESP_DIR}/EFI/BOOT/KERNELX64.EFI"   # bootloader expects this path
+
+# re-export the bootloader target dir temporarily to copy from it
+BOOT_TARGET_DIR="${BUILD_ROOT}/${boot_crate}/target"
+cp -f "${BOOT_TARGET_DIR}/${target}/${out_dir}/${boot_bin}.efi" "${ESP_DIR}/EFI/BOOT/${boot_efi_name}"
+
+# ---- RTOSK pack (ELF -> RTOSK) ----------------------------------------------
+KERNEL_RK_NAME="KERNEL.RTOSK"
+kernel_rk="${ESP_DIR}/EFI/BOOT/${KERNEL_RK_NAME}"
+cargo run --quiet --release -p rtkgen -- "${kernel_elf}" "${kernel_rk}"
+
+# sanity check
+if [[ ! -f "${kernel_rk}" ]]; then
+  echo "ERROR: ${kernel_rk} not found after packing!" >&2
+  echo "ESP content:" >&2
+  find "${ESP_DIR}" -maxdepth 3 -type f -printf '%P\n' | sed 's/^/  /' >&2 || true
+  exit 1
+fi
+echo "ESP ready:"
+find "${ESP_DIR}/EFI/BOOT" -maxdepth 1 -type f -printf '  %f\n' | sort
 
 # ---- OVMF auto-detect (prefer 4M pflash) ------------------------------------
 ovmf_code_candidates=(
@@ -83,7 +102,11 @@ for f in "${ovmf_vars_candidates[@]}";  do [[ -n "$f" && -f "$f" ]] && { ovmf_va
 [[ -n "$ovmf_code" ]] || { echo "OVMF CODE not found. Install 'ovmf' or set OVMF_CODE=/path/to/OVMF_CODE*.fd"; exit 1; }
 
 extra_qemu_args=()
-[[ "$debug_mode" == "on" ]] && extra_qemu_args+=(-s -S)
+if [[ "$debug_mode" == "on" ]]; then
+  # Start paused so GDB can attach before the INT3 fires or early code runs
+  extra_qemu_args+=(-s -S)
+  echo "debug: QEMU started paused; attach with 'gdb -ex \"target remote :1234\"' then 'c'"
+fi
 
 if [[ -n "$ovmf_vars" ]]; then
   mkdir -p "${BOOT_BUILD_DIR}/ovmf"

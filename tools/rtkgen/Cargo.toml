@@ -1,0 +1,11 @@
+[package]
+name = "rtkgen"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "rtkgen"
+path = "src/main.rs"
+
+[dependencies]
+rtkfmt = { path = "../../libs/rtkfmt" }

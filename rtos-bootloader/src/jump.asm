@@ -14,37 +14,29 @@ hexchars    db '0123456789abcdef'
 section .text align=16
 global jump_to_kernel
 
-; Win64/UEFI ABI:
-;   RCX = _a
-;   RDX = _b
-;   R8  = stack_top
-;   R9  = entry
-;   [RSP+40] = boot_info   (retaddr=8 + shadow space=32)
 jump_to_kernel:
-    ; capture boot_info BEFORE touching RSP
-    mov     r10, [rsp+40]        ; r10 = boot_info
-
-    ; pretty logs
+    ; newline + entering
     lea     rsi, [rel nl_crlf]
     call    status_write
     lea     rsi, [rel msg_enter]
     call    status_write
 
+    ; entry value
     lea     rsi, [rel msg_entry]
     call    status_write
-    mov     rax, r9              ; entry
-    call    print_hex64
-    call    print_crlf
-
-    lea     rsi, [rel msg_dumpa]
-    call    status_write
-    mov     rax, r9
+    mov     rax, rcx
     call    print_hex64
     call    print_crlf
 
     ; dump 64 bytes at entry
-    mov     rsi, r9
-    mov     ecx, 4
+    lea     rsi, [rel msg_dumpa]
+    call    status_write
+    mov     rax, rcx
+    call    print_hex64
+    call    print_crlf
+
+    mov     rsi, rcx
+    mov     ecx, 4          ; 4 rows * 16 bytes = 64
 .dump_rows:
     push    rcx
     mov     rax, rsi
@@ -58,7 +50,7 @@ jump_to_kernel:
     mov     edx, 16
 .row_loop:
     mov     al, [rdi]
-    call    print_hex8_nibble_pair
+    call    print_hex8_nibble_pair   ; prints two hex + trailing space
     inc     rdi
     dec     edx
     jnz     .row_loop
@@ -69,7 +61,7 @@ jump_to_kernel:
     dec     ecx
     jnz     .dump_rows
 
-    ; rsp before switch (for logging)
+    ; rsp
     lea     rsi, [rel msg_rsp]
     call    status_write
     mov     rax, rsp
@@ -79,7 +71,7 @@ jump_to_kernel:
     ; rdi (BootInfo*)
     lea     rsi, [rel msg_rdi]
     call    status_write
-    mov     rax, r10             ; boot_info captured from [rsp+40]
+    mov     rax, r8         ; bootinfo passed in r8 from Rust
     call    print_hex64
     call    print_crlf
 
@@ -87,30 +79,30 @@ jump_to_kernel:
     lea     rsi, [rel msg_handoff]
     call    status_write
 
-    ; set up and jump (Win64): rsp <- r8 (stack), rdi <- boot_info, jmp r9 (entry)
-    mov     rsp, r8              ; stack_top
+    ; set up and jump
+    mov     rsp, rdx        ; stack_top
     and     rsp, -16
-    mov     rdi, r10             ; BootInfo* in first arg register (rdi is ignored on Win64 ABI for the callee,
-                                 ; but we're tail-jumping into kernel; use rdi as agreed kernel ABI)
+    mov     rdi, r8         ; BootInfo*
     xor     rbp, rbp
-    jmp     r9                   ; entry
+    jmp     rcx             ; entry
 
 ; ---------------------------------------------------------------
 ; Helpers: output to COM1 and 0xE9
 
 ; putch: AL -> COM1 and 0xE9
+; NOTE: preserve the character across the LSR poll; do NOT use SIL.
 putch:
     push    rdx
-    mov     bl, al
+    mov     bl, al          ; save the character
 .wait_thr:
-    mov     dx, 0x3FD
+    mov     dx, 0x3FD       ; LSR
     in      al, dx
-    test    al, 0x20
+    test    al, 0x20        ; THR empty?
     jz      .wait_thr
-    mov     dx, 0x3F8
+    mov     dx, 0x3F8       ; COM1
     mov     al, bl
     out     dx, al
-    mov     dx, 0x00E9
+    mov     dx, 0x00E9      ; Bochs/QEMU debug port
     out     dx, al
     pop     rdx
     ret
@@ -166,14 +158,12 @@ print_hex64:
 print_hex8_nibble_pair:
     push    rdx
     push    rbx
-    mov     dl, al
-    lea     rdx, [rel hexchars]
-    mov     bl, dl
+    mov     bl, al
     shr     bl, 4
-    and     bl, 0x0F
+    lea     rdx, [rel hexchars]
     mov     al, [rdx+rbx]
     call    putch
-    mov     bl, dl
+    mov     bl, byte [rdi-1] ; restore original byte (already in AL previously)
     and     bl, 0x0F
     mov     al, [rdx+rbx]
     call    putch
@@ -182,4 +172,3 @@ print_hex8_nibble_pair:
     pop     rbx
     pop     rdx
     ret
-

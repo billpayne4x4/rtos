@@ -26,3 +26,20 @@ pub fn parse_segments(bytes: &[u8], segment_count: u32) -> Result<(&[RtkSegment]
     };
     Ok((segs, need))
 }
+
+pub fn find_magic(haystack: &[u8], magic: &[u8]) -> Option<usize> {
+    if haystack.len() < magic.len() { return None; }
+    for i in 0..=haystack.len() - magic.len() {
+        if &haystack[i..i + magic.len()] == magic { return Some(i); }
+    }
+    None
+}
+
+pub fn parse_header_and_segments<'a>(
+    image_bytes: &'a [u8],
+) -> Result<(RtkHeader, &'a [RtkSegment], usize, usize), ()> {
+    let (header, header_len) = parse_header(image_bytes)?;
+    let rest = &image_bytes[header_len..];
+    let (segments, seg_bytes) = parse_segments(rest, header.seg_count)?;
+    Ok((header, segments, header_len, seg_bytes))
+}

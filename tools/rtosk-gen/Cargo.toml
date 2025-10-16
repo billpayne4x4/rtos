@@ -9,3 +9,4 @@ path = "src/main.rs"
 
 [dependencies]
 rtoskfmt = { path = "../../libs/rtoskfmt" }
+goblin = "0.10.2"

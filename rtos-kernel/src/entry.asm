@@ -7,17 +7,15 @@ default rel
 global rtos_entry
 extern kmain
 
-section .text align=16
+section .text.rtos_entry align=16
 rtos_entry:
-    ; System V ABI requires 16-byte alignment at *function entry*.
+    ; System V ABI requires 16-byte alignment at function entry.
     ; A CALL pushes 8 bytes, so pre-bias by 8 before the call.
     sub     rsp, 8
 
     ; RDI already holds BootInfo* from the trampoline.
-    ; Tail-call Rust.
     call    kmain
 
-    ; kmain is noreturn. If it did, halt safely.
 .hang:
     hlt
     jmp .hang

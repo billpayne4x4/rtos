@@ -6,6 +6,7 @@ SECTIONS
   . = 0x0000000000200000;
 
   .text : ALIGN(16) {
+    KEEP(*(.text.rtos_entry))
     *(.text .text.*)
   }
 

@@ -6,7 +6,11 @@ boot_crate="${2:-rtos-bootloader}"
 boot_bin="${3:-bootx64}"
 boot_efi_name="${4:-BOOTX64.EFI}"
 debug_mode="${5:-off}"
+
 target="x86_64-unknown-uefi"
+KERNEL_CRATE="rtos-kernel"
+KERNEL_BIN="rtos-kernel"
+KERNEL_TARGET="x86_64-unknown-none"
 
 BUILD_ROOT="${BUILD_ROOT:-build}"
 
@@ -26,10 +30,6 @@ fi
 boot_efi="${CARGO_TARGET_DIR}/${target}/${out_dir}/${boot_bin}.efi"
 
 # ---- build KERNEL (ELF) ------------------------------------------------------
-KERNEL_CRATE="rtos-kernel"
-KERNEL_BIN="rtos-kernel"
-KERNEL_TARGET="x86_64-unknown-none"
-
 KERNEL_BUILD_DIR="${BUILD_ROOT}/${KERNEL_CRATE}"
 export CARGO_TARGET_DIR="${KERNEL_BUILD_DIR}/target"
 mkdir -p "${CARGO_TARGET_DIR}"
@@ -43,32 +43,56 @@ else
 fi
 
 kernel_elf="${CARGO_TARGET_DIR}/${KERNEL_TARGET}/${k_out}/${KERNEL_BIN}"
+echo "Kernel ELF: ${kernel_elf}"
+[[ -f "${kernel_elf}" ]] || { echo "ERROR: kernel ELF not found at ${kernel_elf}" >&2; exit 2; }
+echo "Kernel ELF size: $(stat -c%s "${kernel_elf}") bytes"
+
+# ---- make a FLAT BIN from sections we actually need -------------------------
+KERNEL_BIN_DIR="${BUILD_ROOT}/${KERNEL_CRATE}"
+mkdir -p "${KERNEL_BIN_DIR}"
+kernel_bin="${KERNEL_BIN_DIR}/kernel.bin"
+
+# Extract .text + .rodata + .data as a contiguous flat image.
+# (Avoids weird PHDR/SHDR edge cases in tiny tests; matches future non-ELF world.)
+objcopy -O binary -j .text -j .rodata -j .data "${kernel_elf}" "${kernel_bin}"
+echo "Kernel BIN: ${kernel_bin} ($(stat -c%s "${kernel_bin}") bytes)"
 
 # ---- fresh ESP staging -------------------------------------------------------
 ESP_DIR="${BOOT_BUILD_DIR}/esp"
 rm -rf "${ESP_DIR}"
 mkdir -p "${ESP_DIR}/EFI/BOOT"
+cp -f "${boot_efi}" "${ESP_DIR}/EFI/BOOT/${boot_efi_name}"
 
-# re-export the bootloader target dir temporarily to copy from it
-BOOT_TARGET_DIR="${BUILD_ROOT}/${boot_crate}/target"
-cp -f "${BOOT_TARGET_DIR}/${target}/${out_dir}/${boot_bin}.efi" "${ESP_DIR}/EFI/BOOT/${boot_efi_name}"
+# ---- build PACKER and pack BIN -> RTOSK -------------------------------------
+PACKER_BUILD_DIR="${BUILD_ROOT}/rtosk-gen"
+export CARGO_TARGET_DIR="${PACKER_BUILD_DIR}/target"
+cargo +nightly build --release -p rtosk-gen
+packer_bin="${PACKER_BUILD_DIR}/target/release/rtosk-gen"
+[[ -x "${packer_bin}" ]] || { echo "ERROR: packer not built: ${packer_bin}" >&2; exit 3; }
 
-# ---- RTOSK pack (ELF -> RTOSK) ----------------------------------------------
-KERNEL_RK_NAME="KERNEL.RTOSK"
-kernel_rk="${ESP_DIR}/EFI/BOOT/${KERNEL_RK_NAME}"
-cargo run --quiet --release -p rtosk-gen -- "${kernel_elf}" "${kernel_rk}"
+KERNEL_RK_CANON="${BUILD_ROOT}/${KERNEL_CRATE}/KERNEL.RTOSK"
+rm -f "${KERNEL_RK_CANON}"
 
-# sanity check
-if [[ ! -f "${kernel_rk}" ]]; then
-  echo "ERROR: ${kernel_rk} not found after packing!" >&2
-  echo "ESP content:" >&2
-  find "${ESP_DIR}" -maxdepth 3 -type f -printf '%P\n' | sed 's/^/  /' >&2 || true
-  exit 1
-fi
+# Args: <input> <output.rtosk> [entry_va] [page_size]
+# We pass entry 0x200000 to match your linker & bootloader jump.
+"${packer_bin}" "${kernel_bin}" "${KERNEL_RK_CANON}" 0x200000 0x1000
+
+[[ -f "${KERNEL_RK_CANON}" ]] || { echo "ERROR: ${KERNEL_RK_CANON} not produced by packer" >&2; exit 4; }
+rk_size=$(stat -c%s "${KERNEL_RK_CANON}")
+echo "Packed: ${KERNEL_RK_CANON} (size ${rk_size} bytes)"
+
+cp -f "${KERNEL_RK_CANON}" "${ESP_DIR}/EFI/BOOT/KERNEL.RTOSK"
+
 echo "ESP ready:"
-find "${ESP_DIR}/EFI/BOOT" -maxdepth 1 -type f -printf '  %f\n' | sort
+find "${ESP_DIR}/EFI/BOOT" -maxdepth 1 -type f -printf '  %f (%s bytes)\n' | sort
 
-# ---- OVMF auto-detect (prefer 4M pflash) ------------------------------------
+# ---- optional: rtosk-inspect (best-effort) ----------------------------------
+INSPECT_BUILD_DIR="${BUILD_ROOT}/rtosk-inspect"
+export CARGO_TARGET_DIR="${INSPECT_BUILD_DIR}/target"
+cargo +nightly build --release -p rtosk-inspect || true
+echo "Inspector (if built): ${INSPECT_BUILD_DIR}/target/release/rtosk-inspect"
+
+# ---- OVMF auto-detect and QEMU ----------------------------------------------
 ovmf_code_candidates=(
   "${OVMF_CODE:-}"
   /usr/share/OVMF/OVMF_CODE_4M.fd
@@ -95,20 +119,18 @@ ovmf_vars_candidates=(
   /usr/share/edk2/ovmf/OVMF_VARS.fd
   /usr/share/ovmf/x64/OVMF_VARS.fd
 )
-
 ovmf_code=""; ovmf_vars=""
 for f in "${ovmf_code_candidates[@]}";  do [[ -n "$f" && -f "$f" ]] && { ovmf_code="$f"; break; };  done
 for f in "${ovmf_vars_candidates[@]}";  do [[ -n "$f" && -f "$f" ]] && { ovmf_vars="$f"; break; };  done
-[[ -n "$ovmf_code" ]] || { echo "OVMF CODE not found. Install 'ovmf' or set OVMF_CODE=/path/to/OVMF_CODE*.fd"; exit 1; }
+[[ -n "$ovmf_code" ]] || { echo "OVMF CODE not found. Install 'ovmf' or set OVMF_CODE=/path/to/OVMF_CODE*.fd"; exit 7; }
 
 extra_qemu_args=()
 if [[ "$debug_mode" == "on" ]]; then
-  # Start paused so GDB can attach before the INT3 fires or early code runs
   extra_qemu_args+=(-s -S)
   echo "debug: QEMU started paused; attach with 'gdb -ex \"target remote :1234\"' then 'c'"
 fi
 
-if [[ -n "$ovmf_vars" ]]; then
+if [[ -n "$ovmf_vars" ]] then
   mkdir -p "${BOOT_BUILD_DIR}/ovmf"
   cp -f "$ovmf_vars" "${BOOT_BUILD_DIR}/ovmf/OVMF_VARS.fd"
   ovmf_vars_rw="${BOOT_BUILD_DIR}/ovmf/OVMF_VARS.fd"

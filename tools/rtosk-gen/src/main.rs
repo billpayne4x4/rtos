@@ -1,143 +1,227 @@
 use std::{
     env,
     fs::File,
-    io::{Read, Seek, SeekFrom, Write},
+    io::{Read, Write},
+    mem,
     path::PathBuf,
 };
 
+use goblin::elf::{program_header, section_header, Elf};
 use rtoskfmt::{constants::RTOSK_MAGIC, RtoskHeader, RtoskSegment, RTOSK_EXEC_FLAG};
 
-fn parse_u64_auto(s: &str) -> u64 {
-    let t = s.trim();
-    if let Some(hex) = t.strip_prefix("0x").or_else(|| t.strip_prefix("0X")) {
-        u64::from_str_radix(hex, 16).expect("parse hex u64")
-    } else {
-        t.parse::<u64>().expect("parse u64")
-    }
+fn align_up(x: usize, a: usize) -> usize { (x + (a - 1)) & !(a - 1) }
+
+fn parse_u64(s: &str) -> u64 {
+    if let Some(h) = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")) {
+        u64::from_str_radix(h, 16).unwrap()
+    } else { s.parse::<u64>().unwrap() }
 }
 
+fn crc32(bytes: &[u8]) -> u32 {
+    let mut crc: u32 = 0xFFFF_FFFF;
+    for &b in bytes {
+        let mut x = (crc ^ (b as u32)) & 0xFF;
+        for _ in 0..8 {
+            let m = (x & 1).wrapping_neg();
+            x = (x >> 1) ^ (0xEDB88320 & m);
+        }
+        crc = (crc >> 8) ^ x;
+    }
+    !crc
+}
+
+#[derive(Clone, Copy)]
+struct PayloadSpec { src_off: usize, file_sz: usize }
+
 fn main() {
-    // Usage:
-    //   rtoskgen <input.bin-or-elf> <output.rtosk> [entry_va] [page_size]
-    //
-    // Behavior:
-    //   * ALWAYS packs as a flat RTOSK (single segment) using libs/rtoskfmt types.
-    //   * Ignores ELF program headers entirely.
-    //   * entry_va default = 0x200000 (can override via arg3).
-    //   * page_size default = 4096 (can override via arg4).
-    //
-    // This guarantees header.entry64 != 0 and flags = RTOSK_EXEC_FLAG.
-
+    // Usage: rtosk-gen <input> <output.rtosk> [entry_va] [page_size]
     let mut args = env::args().skip(1);
-    let input_path = PathBuf::from(args.next().expect("input path"));
-    let output_path = PathBuf::from(args.next().expect("output path"));
-    let entry_va = args
-        .next()
-        .map(|s| parse_u64_auto(&s))
-        .unwrap_or(0x200000);
-    let page_size = args
-        .next()
-        .map(|s| parse_u64_auto(&s) as u32)
-        .unwrap_or(4096);
+    let in_path  = PathBuf::from(args.next().expect("usage: rtosk-gen <input> <output.rtosk> [entry_va] [page_size]"));
+    let out_path = PathBuf::from(args.next().expect("usage: rtosk-gen <input> <output.rtosk> [entry_va] [page_size]"));
+    let entry_override = args.next();
+    let page_size: u32 = args.next().map(|s| parse_u64(&s) as u32).unwrap_or(4096);
 
-    // Read entire input as a raw payload
-    let mut in_file = File::open(&input_path).expect("open input");
-    let mut payload = Vec::<u8>::new();
-    in_file.read_to_end(&mut payload).expect("read input");
-    let payload_len = payload.len() as u64;
+    // Read whole input
+    let mut f = File::open(&in_path).expect("open input");
+    let mut blob = Vec::new();
+    f.read_to_end(&mut blob).expect("read input");
 
-    // Build header & a single executable segment
-    let seg = RtoskSegment {
-        file_offset: 0,                 // to be backfilled after we write payload
-        memory_addr: entry_va,          // VA where we want it mapped
-        memory_size: payload_len,       // zero-fill beyond file_size if needed (here equal)
-        file_size: payload_len,
-        flags: RTOSK_EXEC_FLAG,           // executable
-    };
+    let mut segments: Vec<RtoskSegment> = Vec::new();
+    let mut payloads: Vec<PayloadSpec>  = Vec::new();
+    let mut entry64: u64 = 0;
 
-    let header_len = (core::mem::size_of::<RtoskHeader>() + core::mem::size_of::<RtoskSegment>()) as u32;
+    // Try ELF first
+    if let Ok(elf) = Elf::parse(&blob) {
+        // Prefer ELF64 little-endian; else treat as flat bin
+        if elf.is_64 && elf.little_endian {
+            // 1) Try PT_LOAD-based packing
+            entry64 = entry_override.as_deref().map(parse_u64).unwrap_or(elf.header.e_entry);
 
-    let mut header = RtoskHeader {
+            let mut total_ph_filesz: usize = 0;
+            for ph in &elf.program_headers {
+                if ph.p_type != program_header::PT_LOAD || ph.p_memsz == 0 { continue; }
+
+                let src_off = ph.p_offset as usize;
+                let file_sz = ph.p_filesz as usize;
+                // Ensure we don't read past file
+                if src_off.checked_add(file_sz).unwrap_or(usize::MAX) > blob.len() { continue; }
+
+                let flags = if (ph.p_flags & program_header::PF_X) != 0 { RTOSK_EXEC_FLAG } else { 0 };
+
+                segments.push(RtoskSegment {
+                    file_offset: 0,
+                    file_size: ph.p_filesz,
+                    memory_addr: ph.p_vaddr,
+                    memory_size: ph.p_memsz,
+                    flags,
+                });
+                payloads.push(PayloadSpec { src_off, file_sz });
+                total_ph_filesz = total_ph_filesz.saturating_add(file_sz);
+            }
+
+            // 2) If PHDRs gave us nothing useful (your tiny test case), fall back to SHDR packing.
+            let ph_pack_too_small = total_ph_filesz < 64; // heuristic: basically empty
+            if segments.is_empty() || ph_pack_too_small {
+                segments.clear();
+                payloads.clear();
+
+                // Collect allocatable PROGBITS sections (.text/.rodata/.data etc.)
+                // Keep original VAs (sh_addr) so they map where you linked them (0x200000…).
+                let mut total_sh_filesz = 0usize;
+                for sh in &elf.section_headers {
+                    let sh_flags = sh.sh_flags;
+                    let sh_type  = sh.sh_type;
+
+                    let is_alloc   = (sh_flags & section_header::SHF_ALLOC as u64) != 0;
+                    let is_progbit = sh_type == section_header::SHT_PROGBITS;
+
+                    if !is_alloc || !is_progbit || sh.sh_size == 0 { continue; }
+
+                    let src_off = sh.sh_offset as usize;
+                    let file_sz = sh.sh_size as usize;
+                    if src_off.checked_add(file_sz).unwrap_or(usize::MAX) > blob.len() { continue; }
+
+                    // Mark exec if this looks like .text (has SHF_EXECINSTR)
+                    let exec = (sh_flags & section_header::SHF_EXECINSTR as u64) != 0;
+                    let flags = if exec { RTOSK_EXEC_FLAG } else { 0 };
+
+                    segments.push(RtoskSegment {
+                        file_offset: 0,
+                        file_size: file_sz as u64,
+                        memory_addr: sh.sh_addr,
+                        memory_size: sh.sh_size,
+                        flags,
+                    });
+                    payloads.push(PayloadSpec { src_off, file_sz });
+                    total_sh_filesz = total_sh_filesz.saturating_add(file_sz);
+                }
+
+                // Entry selection: override > ELF e_entry > first alloc section > 0x200000
+                if entry64 == 0 {
+                    if let Some(first_alloc) = elf.section_headers.iter()
+                        .find(|sh| (sh.sh_flags & section_header::SHF_ALLOC as u64) != 0 && sh.sh_addr != 0)
+                    {
+                        entry64 = first_alloc.sh_addr;
+                    } else {
+                        entry64 = 0x200000;
+                    }
+                }
+
+                // Last resort: if even sections yielded nothing (stripped test?), pack flat at entry
+                if segments.is_empty() {
+                    let sz = blob.len() as u64;
+                    let e  = if entry64 != 0 { entry64 } else { 0x200000 };
+                    segments.push(RtoskSegment {
+                        file_offset: 0,
+                        file_size: sz,
+                        memory_addr: e,
+                        memory_size: sz,
+                        flags: RTOSK_EXEC_FLAG,
+                    });
+                    payloads.push(PayloadSpec { src_off: 0, file_sz: sz as usize });
+                }
+            }
+
+            // If e_entry is still zero, default to first executable segment or first segment VA.
+            if entry64 == 0 {
+                entry64 = segments.iter()
+                    .find(|s| s.flags & RTOSK_EXEC_FLAG != 0)
+                    .map(|s| s.memory_addr)
+                    .or_else(|| segments.first().map(|s| s.memory_addr))
+                    .unwrap_or(0x200000);
+            }
+        } else {
+            // Non-ELF64 → flat bin
+            let e = entry_override.as_deref().map(parse_u64).unwrap_or(0x200000);
+            entry64 = e;
+            let sz = blob.len() as u64;
+            segments.push(RtoskSegment {
+                file_offset: 0, file_size: sz, memory_addr: e, memory_size: sz, flags: RTOSK_EXEC_FLAG,
+            });
+            payloads.push(PayloadSpec { src_off: 0, file_sz: sz as usize });
+        }
+    } else {
+        // Not ELF → flat bin
+        let e = entry_override.as_deref().map(parse_u64).unwrap_or(0x200000);
+        entry64 = e;
+        let sz = blob.len() as u64;
+        segments.push(RtoskSegment {
+            file_offset: 0, file_size: sz, memory_addr: e, memory_size: sz, flags: RTOSK_EXEC_FLAG,
+        });
+        payloads.push(PayloadSpec { src_off: 0, file_sz: sz as usize });
+    }
+
+    // ---- Layout RTOSK image ----
+    let header_len = mem::size_of::<RtoskHeader>() + segments.len() * mem::size_of::<RtoskSegment>();
+    let mut cur = header_len;
+    for (seg, p) in segments.iter_mut().zip(payloads.iter()) {
+        cur = align_up(cur, 16);
+        seg.file_offset = cur as u64;
+        cur += p.file_sz;
+    }
+
+    let mut out_buf = vec![0u8; cur];
+
+    // Header + segment table
+    let mut hdr = RtoskHeader {
         magic: RTOSK_MAGIC,
         ver_major: 1,
         ver_minor: 0,
-        header_len,
-        entry64: entry_va,              // <<< critical: non-zero entry VA
+        header_len: header_len as u32,
+        entry64,
         page_size,
-        seg_count: 1,
-        image_crc32: 0,                 // to be backfilled
+        seg_count: segments.len() as u32,
+        image_crc32: 0,
         flags: 0,
     };
 
-    // Write header + seg table + payload, then backfill offsets & CRC
-    let mut out = File::create(&output_path).expect("create out");
-
-    // header
-    let header_bytes = unsafe {
-        core::slice::from_raw_parts(
-            &header as *const RtoskHeader as *const u8,
-            core::mem::size_of::<RtoskHeader>(),
-        )
-    };
-    out.write_all(header_bytes).expect("write header");
-
-    // seg table (temporary; file_offset will be updated)
-    let mut seg_written = seg;
-    let seg_bytes = unsafe {
-        core::slice::from_raw_parts(
-            &seg_written as *const RtoskSegment as *const u8,
-            core::mem::size_of::<RtoskSegment>(),
-        )
-    };
-    out.write_all(seg_bytes).expect("write seg");
-
-    // payload
-    let payload_off = out.stream_position().expect("pos");
-    out.write_all(&payload).expect("write payload");
-
-    // backfill segment.file_offset
-    seg_written.file_offset = payload_off;
-    let seg_table_start = core::mem::size_of::<RtoskHeader>() as u64;
-    out.seek(SeekFrom::Start(seg_table_start)).expect("seek seg");
-    let seg_bytes_updated = unsafe {
-        core::slice::from_raw_parts(
-            &seg_written as *const RtoskSegment as *const u8,
-            core::mem::size_of::<RtoskSegment>(),
-        )
-    };
-    out.write_all(seg_bytes_updated).expect("rewrite seg");
-
-    // compute CRC of image region after header_len
-    let crc = compute_image_crc32(&output_path, header_len as u64);
-    header.image_crc32 = crc;
-
-    // backfill header with CRC
-    out.seek(SeekFrom::Start(0)).expect("seek start");
-    let header_bytes_updated = unsafe {
-        core::slice::from_raw_parts(
-            &header as *const RtoskHeader as *const u8,
-            core::mem::size_of::<RtoskHeader>(),
-        )
-    };
-    out.write_all(header_bytes_updated).expect("rewrite header");
-}
-
-fn compute_image_crc32(path: &PathBuf, offset: u64) -> u32 {
-    let mut file = File::open(path).expect("open image");
-    file.seek(SeekFrom::Start(offset)).expect("seek payload");
-    let mut crc: u32 = 0xFFFF_FFFF;
-    let mut buf = [0u8; 64 * 1024];
-    loop {
-        let n = file.read(&mut buf).expect("read");
-        if n == 0 { break; }
-        for &b in &buf[..n] {
-            let mut x = (crc ^ (b as u32)) & 0xFF;
-            for _ in 0..8 {
-                let m = (x & 1).wrapping_neg();
-                x = (x >> 1) ^ (0xEDB88320 & m);
-            }
-            crc = (crc >> 8) ^ x;
+    let mut cursor = 0usize;
+    unsafe {
+        let hptr = &hdr as *const _ as *const u8;
+        std::ptr::copy_nonoverlapping(hptr, out_buf.as_mut_ptr().add(cursor), mem::size_of::<RtoskHeader>());
+        cursor += mem::size_of::<RtoskHeader>();
+        for seg in &segments {
+            let sptr = seg as *const _ as *const u8;
+            std::ptr::copy_nonoverlapping(sptr, out_buf.as_mut_ptr().add(cursor), mem::size_of::<RtoskSegment>());
+            cursor += mem::size_of::<RtoskSegment>();
         }
     }
-    !crc
+
+    // Copy payload bytes
+    for (i, p) in payloads.iter().enumerate() {
+        if p.file_sz == 0 { continue; }
+        let dst = segments[i].file_offset as usize;
+        out_buf[dst..dst + p.file_sz].copy_from_slice(&blob[p.src_off..p.src_off + p.file_sz]);
+    }
+
+    // Finalize CRC
+    hdr.image_crc32 = crc32(&out_buf);
+    unsafe {
+        let hptr = &hdr as *const _ as *const u8;
+        std::ptr::copy_nonoverlapping(hptr, out_buf.as_mut_ptr(), mem::size_of::<RtoskHeader>());
+    }
+
+    let mut out = File::create(&out_path).expect("create output");
+    out.write_all(&out_buf).expect("write output");
+    let _ = out.flush();
 }

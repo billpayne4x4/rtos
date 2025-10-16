@@ -28,7 +28,6 @@ type Result<T> = std::result::Result<T, Box<dyn Error>>;
 fn read_struct<T: Copy>(buffer: &[u8], offset: usize) -> Option<T> {
     let size = mem::size_of::<T>();
     if offset + size > buffer.len() { return None; }
-    // Safety: T is repr(C) POD (u16/u32/u64 fields). Bounds checked above.
     let mut tmp = mem::MaybeUninit::<T>::uninit();
     unsafe {
         std::ptr::copy_nonoverlapping(
@@ -74,21 +73,21 @@ fn main() -> Result<()> {
     let mut blob = Vec::new();
     file.read_to_end(&mut blob)?;
 
+    // Friendly guard: if this is an ELF, bail with a clear hint.
+    if blob.len() >= 4 && &blob[0..4] == b"\x7FELF" {
+        bail!("this looks like an ELF file; pack it with tools/rtosk-gen to produce KERNEL.RTOSK");
+    }
+
     if blob.len() < mem::size_of::<RtoskHeader>() {
         bail!("file too small for header");
     }
 
-    let magic_offset = find_magic(&blob, &RTOSK_MAGIC);
-    if magic_offset.is_none() {
-        println!("RTOSK magic '{}' not found in file", String::from_utf8_lossy(&RTOSK_MAGIC));
-    }
-    let magic_off = magic_offset.unwrap_or(0);
-    println!("RTOSK magic offset in file: 0x{:x}", magic_off);
+    let magic_offset = find_magic(&blob, &RTOSK_MAGIC)
+        .ok_or_else(|| InspectError("RTOSK magic not found".into()))?;
+    println!("RTOSK magic offset in file: 0x{:x}", magic_offset);
 
-    let header: RtoskHeader = match read_struct(&blob, magic_off) {
-        Some(h) => h,
-        None => bail!("failed to read header at offset 0x{:x}", magic_off),
-    };
+    let header: RtoskHeader = read_struct(&blob, magic_offset)
+        .ok_or_else(|| InspectError(format!("failed to read header at offset 0x{:x}", magic_offset)))?;
 
     let magic_str = String::from_utf8_lossy(&header.magic);
     println!("Header:");
@@ -105,12 +104,12 @@ fn main() -> Result<()> {
     let header_len = header.header_len as usize;
     let seg_table_bytes = (header.seg_count as usize).saturating_mul(mem::size_of::<RtoskSegment>());
     println!("Expect segment table bytes = 0x{:x}", seg_table_bytes);
-    if magic_off + header_len + seg_table_bytes > blob.len() {
+    if magic_offset + header_len + seg_table_bytes > blob.len() {
         println!("WARNING: file too small for declared header_len+segments (moff+hdr_bytes+seg_bytes > file_len)");
     }
 
     let mut segments: Vec<RtoskSegment> = Vec::new();
-    let mut seg_table_off = magic_off + mem::size_of::<RtoskHeader>();
+    let mut seg_table_off = magic_offset + mem::size_of::<RtoskHeader>();
     for i in 0..header.seg_count as usize {
         match read_struct::<RtoskSegment>(&blob, seg_table_off) {
             Some(s) => segments.push(s),
@@ -168,7 +167,7 @@ fn main() -> Result<()> {
             }
         }
         if !found {
-            println!("  -> entry is NOT inside any declared segment memory range. That suggests header.entry64 may be an RVA/offset or incorrect.");
+            println!("  -> entry is NOT inside any declared segment memory range.");
             let want = 128.min(blob.len());
             println!();
             println!("File head (first {} bytes):", want);
@@ -176,14 +175,14 @@ fn main() -> Result<()> {
         }
     }
 
-    let total_head_len = (header.header_len as usize).min(blob.len().saturating_sub(magic_off));
+    let total_head_len = (header.header_len as usize).min(blob.len().saturating_sub(magic_offset));
     println!(
         "Raw header region (moff..moff+header_len = 0x{:x}..0x{:x}) dump:",
-        magic_off,
-        magic_off + total_head_len
+        magic_offset,
+        magic_offset + total_head_len
     );
     if total_head_len > 0 {
-        dump_bytes_at(&blob, magic_off, total_head_len.min(256));
+        dump_bytes_at(&blob, magic_offset, total_head_len.min(256));
     }
 
     Ok(())

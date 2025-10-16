@@ -32,9 +32,13 @@ fn serial_put(b: u8) {
 }
 
 fn serial_write(s: &str) {
-    for &b in s.as_bytes() {
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        let b = bytes[i];
         if b == b'\n' { serial_put(b'\r'); }
         serial_put(b);
+        i += 1;
     }
 }
 

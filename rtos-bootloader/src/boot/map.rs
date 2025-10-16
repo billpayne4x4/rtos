@@ -12,13 +12,13 @@ pub fn map_segments(segments: &[RtoskSegment], image_bytes: &[u8]) -> Result<(),
     let mut pages: [usize; MAX_TRACKED] = [0; MAX_TRACKED];
     let mut count: usize = 0;
 
-    let mut seen = |base: usize, c: usize, p: &[usize; MAX_TRACKED]| -> bool {
+    let seen = |base: usize, c: usize, p: &[usize; MAX_TRACKED]| -> bool {
         for i in 0..c {
             if p[i] == base { return true; }
         }
         false
     };
-    let mut track = |base: usize, c: &mut usize, p: &mut [usize; MAX_TRACKED]| {
+    let track = |base: usize, c: &mut usize, p: &mut [usize; MAX_TRACKED]| {
         if *c < MAX_TRACKED {
             p[*c] = base;
             *c += 1;
@@ -56,7 +56,7 @@ pub fn map_segments(segments: &[RtoskSegment], image_bytes: &[u8]) -> Result<(),
             if seen(page, count, &pages) {
                 write_hex("BL: map page already alloc", page as u64);
             } else {
-                match unsafe { boot::allocate_pages(AllocateType::Address(page as u64), mem_ty, 1) } {
+                match boot::allocate_pages(AllocateType::Address(page as u64), mem_ty, 1) {
                     Ok(_ptr) => {
                         //write_hex("BL: map page allocated", page as u64);
                         track(page, &mut count, &mut pages);

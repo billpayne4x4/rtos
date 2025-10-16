@@ -10,7 +10,7 @@ fn main() {
     println!("cargo:rerun-if-changed=src/entry.asm");
     let mut b = nasm_rs::Build::new();
     b.file("src/entry.asm").flag("-felf64");
-    b.compile("kernel_entry");
+    let _ = b.compile("kernel_entry");
 
     // Tell rustc to link the generated static lib from OUT_DIR
     let out_dir = std::env::var("OUT_DIR").unwrap();

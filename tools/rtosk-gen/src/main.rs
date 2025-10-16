@@ -48,7 +48,7 @@ fn main() {
 
     let mut segments: Vec<RtoskSegment> = Vec::new();
     let mut payloads: Vec<PayloadSpec>  = Vec::new();
-    let mut entry64: u64 = 0;
+    let mut entry64: u64;
 
     // Try ELF first
     if let Ok(elf) = Elf::parse(&blob) {

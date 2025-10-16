@@ -2,173 +2,196 @@ BITS 64
 default rel
 
 section .rodata
-nl_crlf     db 0x0D,0x0A,0
-msg_enter   db 'TRAMPOLINE: entering',13,10,0
-msg_entry   db 'TRAMPOLINE: entry=',0
-msg_dumpa   db 'TRAMPOLINE: dump[64] @',0
-msg_rsp     db 'TRAMPOLINE: rsp=',0
-msg_rdi     db 'TRAMPOLINE: rdi(BootInfo*)=',0
-msg_handoff db 'TRAMPOLINE: handoff to kernel',13,10,0
-hexchars    db '0123456789abcdef'
+text_crlf          db 0x0D,0x0A,0
+text_entered       db 'TRAMPOLINE: Entered',13,10,0
+text_entry         db 'TRAMPOLINE: Entry ',0
+text_stack         db 'TRAMPOLINE: Stack Top ',0
+text_bootinfo      db 'TRAMPOLINE: Boot Info ',0
+text_memdump       db 'TRAMPOLINE: Memory at entry point:',13,10,0
+text_jumping       db 'TRAMPOLINE: Jumping to Kernel Entry Point...',13,10,0
+hex_alphabet       db '0123456789ABCDEF'
 
-section .text align=16
+section .text
 global jump_to_kernel
 
+; RCX = entry, RDX = stack_top, R8 = BootInfo*
 jump_to_kernel:
-    ; newline + entering
-    lea     rsi, [rel nl_crlf]
-    call    status_write
-    lea     rsi, [rel msg_enter]
-    call    status_write
+    ; Save the arguments we need BEFORE any operations
+    mov     r15, rcx            ; R15 = entry (preserve it)
+    mov     r14, rdx            ; R14 = stack_top
+    mov     r13, r8             ; R13 = boot_info
 
-    ; entry value
-    lea     rsi, [rel msg_entry]
-    call    status_write
-    mov     rax, rcx
-    call    print_hex64
+    lea     rdi, [rel text_entered]
+    call    write_status
+
+    ; Print Entry
+    lea     rdi, [rel text_entry]
+    call    write_status
+    mov     rax, r15
+    call    write_hex64
     call    print_crlf
 
-    ; dump 64 bytes at entry
-    lea     rsi, [rel msg_dumpa]
-    call    status_write
-    mov     rax, rcx
-    call    print_hex64
+    ; Print Stack Top
+    lea     rdi, [rel text_stack]
+    call    write_status
+    mov     rax, r14
+    call    write_hex64
     call    print_crlf
 
-    mov     rsi, rcx
-    mov     ecx, 4          ; 4 rows * 16 bytes = 64
-.dump_rows:
-    push    rcx
-    mov     rax, rsi
-    call    print_hex64
-    mov     al, ':'
-    call    putch
-    mov     al, ' '
-    call    putch
-
-    mov     rdi, rsi
-    mov     edx, 16
-.row_loop:
-    mov     al, [rdi]
-    call    print_hex8_nibble_pair   ; prints two hex + trailing space
-    inc     rdi
-    dec     edx
-    jnz     .row_loop
-
-    call    print_crlf
-    add     rsi, 16
-    pop     rcx
-    dec     ecx
-    jnz     .dump_rows
-
-    ; rsp
-    lea     rsi, [rel msg_rsp]
-    call    status_write
-    mov     rax, rsp
-    call    print_hex64
+    ; Print Boot Info
+    lea     rdi, [rel text_bootinfo]
+    call    write_status
+    mov     rax, r13
+    call    write_hex64
     call    print_crlf
 
-    ; rdi (BootInfo*)
-    lea     rsi, [rel msg_rdi]
-    call    status_write
-    mov     rax, r8         ; bootinfo passed in r8 from Rust
-    call    print_hex64
-    call    print_crlf
+    ; Dump memory at kernel entry
+    lea     rdi, [rel text_memdump]
+    call    write_status
+    mov     rsi, r15            ; Entry address
+    mov     ecx, 64             ; Dump 64 bytes
+    call    dump_memory
 
-    ; final handoff banner
-    lea     rsi, [rel msg_handoff]
-    call    status_write
+    lea     rdi, [rel text_jumping]
+    call    write_status
 
-    ; set up and jump
-    mov     rsp, rdx        ; stack_top
-    and     rsp, -16
-    mov     rdi, r8         ; BootInfo*
-    xor     rbp, rbp
-    jmp     rcx             ; entry
+    ; Final setup for the jump - use preserved registers
+    mov     rsp, r14            ; R14 = stack top
+    and     rsp, -16            ; Align stack to 16 bytes
+    mov     rdi, r13            ; R13 = boot_info (first argument)
+    xor     rbp, rbp            ; Clear frame pointer
 
-; ---------------------------------------------------------------
-; Helpers: output to COM1 and 0xE9
+    ; Disable interrupts
+    cli
 
-; putch: AL -> COM1 and 0xE9
-; NOTE: preserve the character across the LSR poll; do NOT use SIL.
-putch:
+    ; Jump to kernel entry (in R15)
+    jmp     r15
+
+; --- helper routines below ---
+
+write_char:
     push    rdx
-    mov     bl, al          ; save the character
-.wait_thr:
-    mov     dx, 0x3FD       ; LSR
-    in      al, dx
-    test    al, 0x20        ; THR empty?
-    jz      .wait_thr
-    mov     dx, 0x3F8       ; COM1
-    mov     al, bl
+    push    rbx
+    mov     bl, al
+    mov     dx, 0x03F8
     out     dx, al
-    mov     dx, 0x00E9      ; Bochs/QEMU debug port
+    mov     dx, 0x00E9
     out     dx, al
+    pop     rbx
     pop     rdx
     ret
 
-; status_write: prints NUL-terminated string at RSI
-status_write:
+write_status:
     push    rax
     push    rdx
-    push    rsi
-.sw_loop:
-    mov     al, [rsi]
+.ws_loop:
+    mov     al, [rdi]
     test    al, al
-    je      .sw_done
-    call    putch
-    inc     rsi
-    jmp     .sw_loop
-.sw_done:
-    pop     rsi
+    je      .ws_done
+    call    write_char
+    inc     rdi
+    jmp     .ws_loop
+.ws_done:
     pop     rdx
     pop     rax
     ret
 
 print_crlf:
+    push    rdi
+    lea     rdi, [rel text_crlf]
+    call    write_status
+    pop     rdi
+    ret
+
+write_hex64:
+    ; RAX holds the 64-bit value to print
+    push    rdi
+    push    rbx
+    push    r10
+    push    r11
+    push    rax                 ; Save original RAX
+
+    lea     rdi, [rel hex_alphabet]
+    mov     ebx, 16
+.wh_loop:
+    rol     qword [rsp], 4      ; Rotate the saved value on stack
+    mov     r10, [rsp]
+    and     r10d, 0x0F
+    mov     r11b, [rdi+r10]
     push    rax
-    mov     al, 0x0D
-    call    putch
-    mov     al, 0x0A
-    call    putch
+    mov     al, r11b
+    call    write_char
     pop     rax
-    ret
+    dec     ebx
+    jnz     .wh_loop
 
-; print_hex64: RAX -> 16 hex chars
-print_hex64:
-    push    rcx
-    push    rbx
-    push    rdx
-    mov     ecx, 16
-.ph64_loop:
-    rol     rax, 4
-    mov     bl, al
-    and     bl, 0x0F
-    lea     rdx, [rel hexchars]
-    mov     al, [rdx+rbx]
-    call    putch
-    dec     ecx
-    jnz     .ph64_loop
-    pop     rdx
+    pop     rax                 ; Clean up stack
+    pop     r11
+    pop     r10
     pop     rbx
-    pop     rcx
+    pop     rdi
     ret
 
-; print_hex8_nibble_pair: AL -> two hex chars + space
-print_hex8_nibble_pair:
-    push    rdx
+write_hex8:
+    ; AL holds the byte to print
+    push    rdi
     push    rbx
+    push    rax
+
+    lea     rdi, [rel hex_alphabet]
+
+    ; High nibble
     mov     bl, al
     shr     bl, 4
-    lea     rdx, [rel hexchars]
-    mov     al, [rdx+rbx]
-    call    putch
-    mov     bl, byte [rdi-1] ; restore original byte (already in AL previously)
-    and     bl, 0x0F
-    mov     al, [rdx+rbx]
-    call    putch
-    mov     al, ' '
-    call    putch
+    and     ebx, 0x0F
+    mov     al, [rdi+rbx]
+    call    write_char
+
+    ; Low nibble
+    mov     bl, [rsp]
+    and     ebx, 0x0F
+    mov     al, [rdi+rbx]
+    call    write_char
+
+    pop     rax
     pop     rbx
-    pop     rdx
+    pop     rdi
+    ret
+
+dump_memory:
+    ; RSI = address to dump
+    ; ECX = number of bytes
+    push    rsi
+    push    rcx
+    push    rax
+
+.dm_loop:
+    test    ecx, ecx
+    jz      .dm_done
+
+    ; Print byte
+    mov     al, [rsi]
+    call    write_hex8
+
+    ; Print space every byte
+    mov     al, ' '
+    call    write_char
+
+    ; Print newline every 16 bytes
+    mov     eax, ecx
+    and     eax, 0x0F
+    cmp     eax, 0x01
+    jne     .dm_skip_newline
+    call    print_crlf
+.dm_skip_newline:
+
+    inc     rsi
+    dec     ecx
+    jmp     .dm_loop
+
+.dm_done:
+    call    print_crlf
+    pop     rax
+    pop     rcx
+    pop     rsi
     ret

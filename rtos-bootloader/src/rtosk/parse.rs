@@ -27,14 +27,6 @@ pub fn parse_segments(bytes: &[u8], segment_count: u32) -> Result<(&[RtoskSegmen
     Ok((segs, need))
 }
 
-pub fn find_magic(haystack: &[u8], magic: &[u8]) -> Option<usize> {
-    if haystack.len() < magic.len() { return None; }
-    for i in 0..=haystack.len() - magic.len() {
-        if &haystack[i..i + magic.len()] == magic { return Some(i); }
-    }
-    None
-}
-
 pub fn parse_header_and_segments<'a>(
     image_bytes: &'a [u8],
 ) -> Result<(RtoskHeader, &'a [RtoskSegment], usize, usize), ()> {

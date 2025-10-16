@@ -2,9 +2,9 @@ use core::{cmp::max, slice};
 
 use crate::boot::{bootfs, map, open, prepare};
 use crate::boot::console::{write_hex, write_line};
-use crate::rtk::parse_header_and_segments;
+use crate::rtosk::parse_header_and_segments;
 
-use rtkfmt::constants::RTOSK_MAGIC;
+use rtoskfmt::constants::RTOSK_MAGIC;
 
 pub fn boot_entry() -> uefi::Status {
     write_line("BL: boot_entry start");

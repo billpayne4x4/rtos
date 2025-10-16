@@ -1,11 +1,13 @@
 #![no_std]
 #![no_main]
 
+use uefi::Status;
+
 mod boot;
-mod rtk;
+mod rtosk;
 
 #[uefi::entry]
-fn efi_main() -> uefi::Status {
+fn efi_main() -> Status {
     boot::entry::boot_entry()
 }
 

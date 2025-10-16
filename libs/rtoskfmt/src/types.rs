@@ -1,6 +1,6 @@
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub struct RtkHeader {
+pub struct RtoskHeader {
     pub magic: [u8; 5],
     pub ver_major: u16,
     pub ver_minor: u16,
@@ -14,7 +14,7 @@ pub struct RtkHeader {
 
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub struct RtkSegment {
+pub struct RtoskSegment {
     pub file_offset: u64,
     pub memory_addr: u64,
     pub memory_size: u64,

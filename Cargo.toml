@@ -3,13 +3,14 @@ members = [
     "rtos-bootloader",
     "rtos-kernel",
     "rtos",
-    "libs/rtkfmt",
+    "libs/rtoskfmt",
     "libs/hal",
     "libs/vfs",
-    "libs/rtkfmt",
+    "libs/rtoskfmt",
     "drivers/virtio-blk",
     "file-systems/fat32",
-    "tools/rtkgen"
+    "tools/rtosk-gen",
+    "tools/rtosk-inspect"
 ]
 resolver = "2"
 

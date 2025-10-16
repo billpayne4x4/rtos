@@ -1,5 +1,5 @@
 #[derive(Clone, Copy)]
-pub enum RtkError {
+pub enum RtoskError {
     BlobTooSmall,
     BadMagic,
     BadHeaderLen,

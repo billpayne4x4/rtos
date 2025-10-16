@@ -1,0 +1,11 @@
+[package]
+name = "rtosk-gen"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "rtosk-gen"
+path = "src/main.rs"
+
+[dependencies]
+rtoskfmt = { path = "../../libs/rtoskfmt" }

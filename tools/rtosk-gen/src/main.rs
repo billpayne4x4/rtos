@@ -5,7 +5,7 @@ use std::{
     path::PathBuf,
 };
 
-use rtkfmt::{constants::RTOSK_MAGIC, RtkHeader, RtkSegment, RTK_EXEC_FLAG};
+use rtoskfmt::{constants::RTOSK_MAGIC, RtoskHeader, RtoskSegment, RTOSK_EXEC_FLAG};
 
 fn parse_u64_auto(s: &str) -> u64 {
     let t = s.trim();
@@ -18,15 +18,15 @@ fn parse_u64_auto(s: &str) -> u64 {
 
 fn main() {
     // Usage:
-    //   rtkgen <input.bin-or-elf> <output.rtosk> [entry_va] [page_size]
+    //   rtoskgen <input.bin-or-elf> <output.rtosk> [entry_va] [page_size]
     //
     // Behavior:
-    //   * ALWAYS packs as a flat RTOSK (single segment) using libs/rtkfmt types.
+    //   * ALWAYS packs as a flat RTOSK (single segment) using libs/rtoskfmt types.
     //   * Ignores ELF program headers entirely.
     //   * entry_va default = 0x200000 (can override via arg3).
     //   * page_size default = 4096 (can override via arg4).
     //
-    // This guarantees header.entry64 != 0 and flags = RTK_EXEC_FLAG.
+    // This guarantees header.entry64 != 0 and flags = RTOSK_EXEC_FLAG.
 
     let mut args = env::args().skip(1);
     let input_path = PathBuf::from(args.next().expect("input path"));
@@ -47,17 +47,17 @@ fn main() {
     let payload_len = payload.len() as u64;
 
     // Build header & a single executable segment
-    let seg = RtkSegment {
+    let seg = RtoskSegment {
         file_offset: 0,                 // to be backfilled after we write payload
         memory_addr: entry_va,          // VA where we want it mapped
         memory_size: payload_len,       // zero-fill beyond file_size if needed (here equal)
         file_size: payload_len,
-        flags: RTK_EXEC_FLAG,           // executable
+        flags: RTOSK_EXEC_FLAG,           // executable
     };
 
-    let header_len = (core::mem::size_of::<RtkHeader>() + core::mem::size_of::<RtkSegment>()) as u32;
+    let header_len = (core::mem::size_of::<RtoskHeader>() + core::mem::size_of::<RtoskSegment>()) as u32;
 
-    let mut header = RtkHeader {
+    let mut header = RtoskHeader {
         magic: RTOSK_MAGIC,
         ver_major: 1,
         ver_minor: 0,
@@ -75,8 +75,8 @@ fn main() {
     // header
     let header_bytes = unsafe {
         core::slice::from_raw_parts(
-            &header as *const RtkHeader as *const u8,
-            core::mem::size_of::<RtkHeader>(),
+            &header as *const RtoskHeader as *const u8,
+            core::mem::size_of::<RtoskHeader>(),
         )
     };
     out.write_all(header_bytes).expect("write header");
@@ -85,8 +85,8 @@ fn main() {
     let mut seg_written = seg;
     let seg_bytes = unsafe {
         core::slice::from_raw_parts(
-            &seg_written as *const RtkSegment as *const u8,
-            core::mem::size_of::<RtkSegment>(),
+            &seg_written as *const RtoskSegment as *const u8,
+            core::mem::size_of::<RtoskSegment>(),
         )
     };
     out.write_all(seg_bytes).expect("write seg");
@@ -97,12 +97,12 @@ fn main() {
 
     // backfill segment.file_offset
     seg_written.file_offset = payload_off;
-    let seg_table_start = core::mem::size_of::<RtkHeader>() as u64;
+    let seg_table_start = core::mem::size_of::<RtoskHeader>() as u64;
     out.seek(SeekFrom::Start(seg_table_start)).expect("seek seg");
     let seg_bytes_updated = unsafe {
         core::slice::from_raw_parts(
-            &seg_written as *const RtkSegment as *const u8,
-            core::mem::size_of::<RtkSegment>(),
+            &seg_written as *const RtoskSegment as *const u8,
+            core::mem::size_of::<RtoskSegment>(),
         )
     };
     out.write_all(seg_bytes_updated).expect("rewrite seg");
@@ -115,8 +115,8 @@ fn main() {
     out.seek(SeekFrom::Start(0)).expect("seek start");
     let header_bytes_updated = unsafe {
         core::slice::from_raw_parts(
-            &header as *const RtkHeader as *const u8,
-            core::mem::size_of::<RtkHeader>(),
+            &header as *const RtoskHeader as *const u8,
+            core::mem::size_of::<RtoskHeader>(),
         )
     };
     out.write_all(header_bytes_updated).expect("rewrite header");

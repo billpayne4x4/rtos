@@ -2,11 +2,11 @@ use core::ptr;
 use uefi::boot::{self, AllocateType};
 use uefi::mem::memory_map::MemoryType;
 
-use rtkfmt::{RtkSegment, RTK_EXEC_FLAG};
+use rtoskfmt::{RtoskSegment, RTOSK_EXEC_FLAG};
 
 use crate::boot::console::{write_hex, write_line};
 
-pub fn map_segments(segments: &[RtkSegment], image_bytes: &[u8]) -> Result<(), uefi::Status> {
+pub fn map_segments(segments: &[RtoskSegment], image_bytes: &[u8]) -> Result<(), uefi::Status> {
     const MAX_TRACKED: usize = 4096;
 
     let mut pages: [usize; MAX_TRACKED] = [0; MAX_TRACKED];
@@ -45,7 +45,7 @@ pub fn map_segments(segments: &[RtkSegment], image_bytes: &[u8]) -> Result<(), u
         write_hex("  start_page", start_page as u64);
         write_hex("  end_page", end_page as u64);
 
-        let mem_ty = if (seg.flags & RTK_EXEC_FLAG) != 0 {
+        let mem_ty = if (seg.flags & RTOSK_EXEC_FLAG) != 0 {
             MemoryType::LOADER_CODE
         } else {
             MemoryType::LOADER_DATA
@@ -58,7 +58,7 @@ pub fn map_segments(segments: &[RtkSegment], image_bytes: &[u8]) -> Result<(), u
             } else {
                 match unsafe { boot::allocate_pages(AllocateType::Address(page as u64), mem_ty, 1) } {
                     Ok(_ptr) => {
-                        write_hex("BL: map page allocated", page as u64);
+                        //write_hex("BL: map page allocated", page as u64);
                         track(page, &mut count, &mut pages);
                     }
                     Err(e) => {

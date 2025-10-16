@@ -1,11 +1,11 @@
 [package]
-name = "rtkgen"
+name = "rtosk-inspect"
 version = "0.1.0"
 edition = "2021"
 
 [[bin]]
-name = "rtkgen"
+name = "rtosk-inspect"
 path = "src/main.rs"
 
 [dependencies]
-rtkfmt = { path = "../../libs/rtkfmt" }
+rtoskfmt = { path = "../../libs/rtoskfmt" }

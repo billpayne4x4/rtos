@@ -56,7 +56,7 @@ cp -f "${BOOT_TARGET_DIR}/${target}/${out_dir}/${boot_bin}.efi" "${ESP_DIR}/EFI/
 # ---- RTOSK pack (ELF -> RTOSK) ----------------------------------------------
 KERNEL_RK_NAME="KERNEL.RTOSK"
 kernel_rk="${ESP_DIR}/EFI/BOOT/${KERNEL_RK_NAME}"
-cargo run --quiet --release -p rtkgen -- "${kernel_elf}" "${kernel_rk}"
+cargo run --quiet --release -p rtosk-gen -- "${kernel_elf}" "${kernel_rk}"
 
 # sanity check
 if [[ ! -f "${kernel_rk}" ]]; then

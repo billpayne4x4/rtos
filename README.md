@@ -1,5 +1,9 @@
 # RTOS — A Rust Operating System
 
+<p align="center">
+  <img src="images/rtos-logo-transparent.png" alt="gDocker interface screenshot" width="512">
+</p>
+
 **⚙️ RTOS** is a minimal, work-in-progress Rust-based operating system project with its own bootloader, kernel, and custom file formats.  
 It currently boots under UEFI, uses an assembly trampoline to enter 64-bit Rust kernel mode, and successfully prints a message on screen.
 

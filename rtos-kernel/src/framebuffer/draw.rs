@@ -18,33 +18,47 @@ impl Framebuffer {
 
     /// Solid clear (no alpha). Uses volatile writes and respects stride.
     pub fn clear(&mut self, r: u8, g: u8, b: u8) {
-        serial_log!("before fill...");
         let fill   = pack_rgb_fmt(self.format, r, g, b);
-        serial_log!("before width...");
         let width  = self.width  as usize;
-        serial_log!("before height...");
         let height = self.height as usize;
+        let stride = self.stride as usize;
+        serial_log!("Width: ", width);
+        serial_log!("Height: ", height);
+        serial_log!("Stride: ", stride);
 
-        SerialWriter::write("K: Height: ");
-        SerialWriter::write_usize(height);
-        SerialWriter::write("\n");
+        SerialWriter::write("K: Testing direct write with asm...\n");
+        unsafe {
+            core::arch::asm!(
+            "mov [rdi], eax",
+            in("rdi") self.ptr as *mut u32,
+            in("eax") fill,
+            options(nostack)
+            );
+        }
+        SerialWriter::write("K: Direct asm write succeeded!\n");
 
-        SerialWriter::write("K: Width: ");
-        SerialWriter::write_usize(width);
-        SerialWriter::write("\n");
+        let draw_w = if width < stride { width } else { stride };
+        serial_log!("DrawW: ", draw_w);
 
-        serial_log!("before for y in 0..height {...");
-        for y in 0..height {
-            serial_log!("let mut px = self.row_ptr(y as u32);...");
+        let mut y = 0;
+        while y < height {
+            if (y & 0x3F) == 0 { serial_log!("Row: ", y); }
             let mut px = self.row_ptr(y as u32);
-            serial_log!("before for y in 0..width {...");
-            for _x in 0..width {
-                serial_log!("unsafe { ptr::write_volatile(px, fill) };...");
-                unsafe { ptr::write_volatile(px, fill) };
-                serial_log!("unsafe { px = px.add(1) };...");
-                unsafe { px = px.add(1) };
-                serial_log!("Loop done.");
+
+            let mut x = 0;
+            while x < width {
+                unsafe {
+                    core::arch::asm!(
+                    "mov [rdi], eax",
+                    in("rdi") px,
+                    in("eax") fill,
+                    options(nostack)
+                    );
+                    px = px.add(1);
+                }
+                x += 1;
             }
+            y += 1;
         }
         serial_log!("Clear done.");
     }

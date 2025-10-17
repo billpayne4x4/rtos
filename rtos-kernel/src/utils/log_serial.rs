@@ -147,12 +147,43 @@ macro_rules! serial_println {
     ($s:literal) => {{
         $crate::utils::log_serial::SerialWriter::write(concat!($s, "\n"));
     }};
+    ($s:literal, $val:expr) => {{
+        $crate::utils::log_serial::SerialWriter::write($s);
+        $crate::utils::log_serial::SerialWriter::write(" ");
+        $crate::utils::log_serial::SerialWriter::write_usize($val as usize);
+        $crate::utils::log_serial::SerialWriter::write("\n");
+    }};
+    ($s:literal, hex $val:expr) => {{
+        $crate::utils::log_serial::SerialWriter::write($s);
+        $crate::utils::log_serial::SerialWriter::write(" ");
+        $crate::utils::log_serial::SerialWriter::write_hex($val as usize);
+        $crate::utils::log_serial::SerialWriter::write("\n");
+    }};
+    ($s:literal, $val1:expr, $val2:expr) => {{
+        $crate::utils::log_serial::SerialWriter::write($s);
+        $crate::utils::log_serial::SerialWriter::write(" ");
+        $crate::utils::log_serial::SerialWriter::write_usize($val1 as usize);
+        $crate::utils::log_serial::SerialWriter::write(" ");
+        $crate::utils::log_serial::SerialWriter::write_usize($val2 as usize);
+        $crate::utils::log_serial::SerialWriter::write("\n");
+    }};
 }
-
 #[macro_export]
 macro_rules! serial_log {
     ($s:literal) => {{
         $crate::utils::log_serial::SerialWriter::write(concat!("K: ", $s, "\n"));
+    }};
+    ($s:literal, $val:expr) => {{
+        $crate::utils::log_serial::SerialWriter::write(concat!("K: ", $s, " "));
+        $crate::utils::log_serial::SerialWriter::write_usize($val as usize);
+        $crate::utils::log_serial::SerialWriter::write("\n");
+    }};
+    ($s:literal, $val1:expr, $val2:expr) => {{
+        $crate::utils::log_serial::SerialWriter::write(concat!("K: ", $s, " "));
+        $crate::utils::log_serial::SerialWriter::write_usize($val1 as usize);
+        $crate::utils::log_serial::SerialWriter::write(" ");
+        $crate::utils::log_serial::SerialWriter::write_usize($val2 as usize);
+        $crate::utils::log_serial::SerialWriter::write("\n");
     }};
 }
 

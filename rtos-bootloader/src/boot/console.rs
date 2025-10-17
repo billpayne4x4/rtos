@@ -37,3 +37,7 @@ pub fn write_hex(label: &str, value: u64) {
         write_line(s);
     }
 }
+
+pub fn clear_screen() {
+    let _ = system::with_stdout(|out| out.clear());
+}

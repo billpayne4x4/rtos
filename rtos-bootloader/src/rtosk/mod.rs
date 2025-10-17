@@ -1,2 +1,2 @@
 pub mod parse;
-pub use parse::parse_header_and_segments;
+pub use parse::{parse_header_and_segments, find_magic };

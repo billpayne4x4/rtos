@@ -1,9 +1,7 @@
 use core::ptr;
 use uefi::boot::{self, AllocateType};
 use uefi::mem::memory_map::MemoryType;
-
 use rtoskfmt::{RtoskSegment, RTOSK_EXEC_FLAG};
-
 use crate::boot::console::{write_hex, write_line};
 
 pub fn map_segments(segments: &[RtoskSegment], image_bytes: &[u8]) -> Result<(), uefi::Status> {
@@ -13,18 +11,11 @@ pub fn map_segments(segments: &[RtoskSegment], image_bytes: &[u8]) -> Result<(),
     let mut count: usize = 0;
 
     let seen = |base: usize, c: usize, p: &[usize; MAX_TRACKED]| -> bool {
-        for i in 0..c {
-            if p[i] == base { return true; }
-        }
+        for i in 0..c { if p[i] == base { return true; } }
         false
     };
     let track = |base: usize, c: &mut usize, p: &mut [usize; MAX_TRACKED]| {
-        if *c < MAX_TRACKED {
-            p[*c] = base;
-            *c += 1;
-        } else {
-            write_line("BL: map warn: page tracker full; may re-alloc");
-        }
+        if *c < MAX_TRACKED { p[*c] = base; *c += 1; } else { write_line("BL: map warn: page tracker full; may re-alloc"); }
     };
 
     for (i, seg) in segments.iter().enumerate() {
@@ -45,11 +36,7 @@ pub fn map_segments(segments: &[RtoskSegment], image_bytes: &[u8]) -> Result<(),
         write_hex("  start_page", start_page as u64);
         write_hex("  end_page", end_page as u64);
 
-        let mem_ty = if (seg.flags & RTOSK_EXEC_FLAG) != 0 {
-            MemoryType::LOADER_CODE
-        } else {
-            MemoryType::LOADER_DATA
-        };
+        let mem_ty = if (seg.flags & RTOSK_EXEC_FLAG) != 0 { MemoryType::LOADER_CODE } else { MemoryType::LOADER_DATA };
 
         let mut page = start_page;
         while page < end_page {
@@ -57,14 +44,8 @@ pub fn map_segments(segments: &[RtoskSegment], image_bytes: &[u8]) -> Result<(),
                 write_hex("BL: map page already alloc", page as u64);
             } else {
                 match boot::allocate_pages(AllocateType::Address(page as u64), mem_ty, 1) {
-                    Ok(_ptr) => {
-                        //write_hex("BL: map page allocated", page as u64);
-                        track(page, &mut count, &mut pages);
-                    }
-                    Err(e) => {
-                        write_line("BL: ERROR allocate_pages");
-                        return Err(e.status());
-                    }
+                    Ok(_) => { track(page, &mut count, &mut pages); }
+                    Err(e) => { write_line("BL: ERROR allocate_pages"); return Err(e.status()); }
                 }
             }
             page += 0x1000;
@@ -73,13 +54,7 @@ pub fn map_segments(segments: &[RtoskSegment], image_bytes: &[u8]) -> Result<(),
         if file_len > 0 {
             let end = file_off.saturating_add(file_len);
             if end <= image_bytes.len() {
-                unsafe {
-                    ptr::copy_nonoverlapping(
-                        image_bytes[file_off..end].as_ptr(),
-                        tgt as *mut u8,
-                        file_len,
-                    );
-                }
+                unsafe { ptr::copy_nonoverlapping(image_bytes[file_off..end].as_ptr(), tgt as *mut u8, file_len); }
                 write_hex("BL: map copied", file_len as u64);
             } else {
                 write_line("BL: map ERROR file range OOB");

@@ -35,3 +35,13 @@ pub fn parse_header_and_segments<'a>(
     let (segments, seg_bytes) = parse_segments(rest, header.seg_count)?;
     Ok((header, segments, header_len, seg_bytes))
 }
+
+pub fn find_magic(haystack: &[u8], magic: &[u8]) -> Option<usize> {
+    if haystack.len() < magic.len() { return None; }
+    for i in 0..=haystack.len() - magic.len() {
+        if &haystack[i..i + magic.len()] == magic {
+            return Some(i);
+        }
+    }
+    None
+}

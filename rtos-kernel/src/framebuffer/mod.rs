@@ -2,14 +2,16 @@ use rtos_types::{BootInfo, FramebufferFormat};
 use core::slice;
 
 // ===== Submodules =====
-mod draw;
-mod blend;
-mod utils;
+pub mod draw;
+pub mod blend;
+pub mod utils;
+mod validate;
 
 // Re-export their public items so external code can use them
 pub use draw::*;
 pub use blend::*;
 pub use utils::*;
+pub use validate::*;
 
 // ===== Core framebuffer struct =====
 pub struct Framebuffer {

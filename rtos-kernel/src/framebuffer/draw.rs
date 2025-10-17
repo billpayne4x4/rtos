@@ -1,66 +1,41 @@
 use core::ptr;
-use super::Framebuffer;
-use super::utils::pack_rgb_fmt;
+use crate::framebuffer::Framebuffer;
+use crate::framebuffer::pack_rgb_fmt;
 use crate::serial_log;
-use crate::utils::SerialWriter;
+use crate::utils::{SerialWriter, mmio_store32, mmio_load32};
+use core::ptr::NonNull;
+
 
 impl Framebuffer {
     #[inline]
     fn bytes_per_pixel(&self) -> usize { 4 }
 
     #[inline]
-    fn row_ptr(&self, y: u32) -> *mut u32 {
+    pub fn row_ptr(&self, y: u32) -> *mut u32 {
         // Advance by (y * stride * bpp) bytes from the base pointer.
         let bpp = self.bytes_per_pixel();
         let stride_bytes = (self.stride as usize) * bpp;
         unsafe { (self.ptr as *mut u8).add((y as usize) * stride_bytes) as *mut u32 }
     }
 
-    /// Solid clear (no alpha). Uses volatile writes and respects stride.
+    /// Solid clear (no alpha). Uses mmio_store32 writes and respects stride.
     pub fn clear(&mut self, r: u8, g: u8, b: u8) {
         let fill   = pack_rgb_fmt(self.format, r, g, b);
         let width  = self.width  as usize;
         let height = self.height as usize;
         let stride = self.stride as usize;
-        serial_log!("Width: ", width);
-        serial_log!("Height: ", height);
-        serial_log!("Stride: ", stride);
-
-        SerialWriter::write("K: Testing direct write with asm...\n");
-        unsafe {
-            core::arch::asm!(
-            "mov [rdi], eax",
-            in("rdi") self.ptr as *mut u32,
-            in("eax") fill,
-            options(nostack)
-            );
-        }
-        SerialWriter::write("K: Direct asm write succeeded!\n");
-
         let draw_w = if width < stride { width } else { stride };
-        serial_log!("DrawW: ", draw_w);
 
         let mut y = 0;
         while y < height {
-            if (y & 0x3F) == 0 { serial_log!("Row: ", y); }
-            let mut px = self.row_ptr(y as u32);
-
-            let mut x = 0;
-            while x < width {
-                unsafe {
-                    core::arch::asm!(
-                    "mov [rdi], eax",
-                    in("rdi") px,
-                    in("eax") fill,
-                    options(nostack)
-                    );
-                    px = px.add(1);
-                }
-                x += 1;
+            let mut p = unsafe { self.row_ptr(y as u32) };
+            let end = p.wrapping_add(draw_w);
+            while p != end {
+                unsafe { mmio_store32(p, fill) };
+                p = unsafe { p.add(1) };
             }
             y += 1;
         }
-        serial_log!("Clear done.");
     }
 
     /// Put a single pixel; volatile write.

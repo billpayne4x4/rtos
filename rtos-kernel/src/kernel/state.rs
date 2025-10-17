@@ -8,30 +8,29 @@ pub struct KernelState {
 }
 
 impl KernelState {
-    /// Build state from BootInfo and do a minimal visual bring-up.
+    /// Build state and do minimal visual bring-up.
+    /// Assumes the framebuffer VA is already valid (identity-mapped or HHDM).
     pub unsafe fn new(bi: &BootInfo) -> Self {
         serial_log!("Getting kernel state from boot info...");
         let mut state = Self { fb: Framebuffer::from_bootinfo(bi) };
 
         serial_log!("Clearing console...");
-        // RTOS blue background
         state.fb.clear(0x00, 0x2D, 0x61);
-        serial_log!("Done.");
+        serial_log!("Clear Console Done.");
 
-        // One-shot console just to print a banner
-        state.with_console(|c| {
-            c.write_str("Kernel setup complete.\n");
-        });
-
+        state.with_console(|c| c.write_str("Kernel setup complete.\n"));
         state
     }
 
-    pub fn with_console<F>(&mut self, mut f: F)
+    pub fn with_framebuffer_mut<F: FnOnce(&mut Framebuffer)>(&mut self, f: F) {
+        f(&mut self.fb);
+    }
+
+    pub fn with_console<F>(&mut self, f: F)
     where
         F: FnOnce(&mut Console<'_>),
     {
         let mut console = Console::new(&mut self.fb, (255, 255, 255), Some((0, 0, 0)));
         f(&mut console);
-        // `console` drops here; `&mut fb` borrow ends cleanly.
     }
 }

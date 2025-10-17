@@ -122,31 +122,147 @@ jump_to_kernel:
     mov     edx, eax
     shl     rdx, 2
     mov     edx, [rsi + rdx]
+    ; edx now has RGBA pixel: bits 0-7=R, 8-15=G, 16-23=B, 24-31=A
     mov     eax, edx
     shr     eax, 24
+    and     eax, 0xFF
     test    eax, eax
     jz      .skip_store
-    mov     ebx, edx
-    and     ebx, 0xFF
+    cmp     eax, 255
+    je      .full_alpha
+    ; Alpha blend
+    push    r9
+    push    r10
+    mov     r9d, edx          ; r9d = source RGBA pixel
+    mov     r10d, eax         ; r10d = alpha
+    mov     ebx, [rdi + rcx*4] ; ebx = dst pixel (BGR or RGB)
+    ; inv_alpha = 255 - alpha
+    mov     eax, 255
+    sub     eax, r10d
+    mov     edx, eax          ; edx = inv_alpha
+
+    cmp     r8d, 0
+    jne     .blend_as_rgb
+
+    ; Destination is BGR format
+    ; Blend B: dst[0] with src B (byte 2 of RGBA)
+    mov     eax, r9d
+    shr     eax, 16
+    and     eax, 0xFF         ; B from RGBA
+    imul    eax, r10d
+    movzx   ebp, bl           ; dst B
+    imul    ebp, edx
+    add     eax, ebp
+    add     eax, 127
+    shr     eax, 8
+    push    rax
+    ; Blend G: dst[1] with src G (byte 1 of RGBA)
+    mov     eax, r9d
+    shr     eax, 8
+    and     eax, 0xFF         ; G from RGBA
+    imul    eax, r10d
+    mov     ebp, ebx
+    shr     ebp, 8
+    and     ebp, 0xFF         ; dst G
+    imul    ebp, edx
+    add     eax, ebp
+    add     eax, 127
+    shr     eax, 8
+    push    rax
+    ; Blend R: dst[2] with src R (byte 0 of RGBA)
+    movzx   eax, r9b          ; R from RGBA
+    imul    eax, r10d
+    mov     ebp, ebx
+    shr     ebp, 16
+    and     ebp, 0xFF         ; dst R
+    imul    ebp, edx
+    add     eax, ebp
+    add     eax, 127
+    shr     eax, 8
+    ; Combine as BGR
+    pop     rbp               ; G
+    pop     rbx               ; B
+    shl     eax, 16           ; R in high position
+    shl     ebp, 8            ; G in middle
+    or      eax, ebp
+    or      eax, ebx          ; B in low position
+    mov     [rdi + rcx*4], eax
+    pop     r10
+    pop     r9
+    jmp     .skip_store
+
+.blend_as_rgb:
+    ; Destination is RGB format
+    ; Blend R: dst[0] with src R (byte 0 of RGBA)
+    movzx   eax, r9b          ; R from RGBA
+    imul    eax, r10d
+    movzx   ebp, bl           ; dst R
+    imul    ebp, edx
+    add     eax, ebp
+    add     eax, 127
+    shr     eax, 8
+    push    rax
+    ; Blend G: dst[1] with src G (byte 1 of RGBA)
+    mov     eax, r9d
+    shr     eax, 8
+    and     eax, 0xFF         ; G from RGBA
+    imul    eax, r10d
+    mov     ebp, ebx
+    shr     ebp, 8
+    and     ebp, 0xFF         ; dst G
+    imul    ebp, edx
+    add     eax, ebp
+    add     eax, 127
+    shr     eax, 8
+    push    rax
+    ; Blend B: dst[2] with src B (byte 2 of RGBA)
+    mov     eax, r9d
+    shr     eax, 16
+    and     eax, 0xFF         ; B from RGBA
+    imul    eax, r10d
+    mov     ebp, ebx
+    shr     ebp, 16
+    and     ebp, 0xFF         ; dst B
+    imul    ebp, edx
+    add     eax, ebp
+    add     eax, 127
+    shr     eax, 8
+    ; Combine as RGB
+    pop     rbp               ; G
+    pop     rbx               ; R
+    shl     ebx, 16           ; R in high position
+    shl     ebp, 8            ; G in middle
+    or      ebx, ebp
+    or      ebx, eax          ; B in low position
+    mov     [rdi + rcx*4], ebx
+    pop     r10
+    pop     r9
+    jmp     .skip_store
+
+.full_alpha:
+    ; Source is RGBA: R=byte0, G=byte1, B=byte2
+    movzx   ebx, dl           ; R
     mov     eax, edx
     shr     eax, 8
-    and     eax, 0xFF
+    and     eax, 0xFF         ; G
     mov     ebp, edx
     shr     ebp, 16
-    and     ebp, 0xFF
+    and     ebp, 0xFF         ; B
     cmp     r8d, 0
     jne     .store_rgb
-    shl     ebx, 16
-    shl     eax, 8
+    ; Store as BGR: B, G, R
+    shl     ebx, 16           ; R high
+    shl     eax, 8            ; G middle
     or      ebx, eax
-    or      ebx, ebp
+    or      ebx, ebp          ; B low
     mov     [rdi + rcx*4], ebx
     jmp     .skip_store
 .store_rgb:
-    shl     ebp, 16
-    shl     eax, 8
+    ; Store as RGB: R, G, B
+    shl     ebp, 16           ; B high
+    shl     eax, 8            ; G middle
     or      ebp, eax
-    or      ebp, ebx
+    or      ebp, ebx          ; R low
     mov     [rdi + rcx*4], ebp
 .skip_store:
     pop     rbp

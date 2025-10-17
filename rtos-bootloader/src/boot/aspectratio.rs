@@ -1,3 +1,4 @@
+#[allow(dead_code)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum AspectRatio {
     // Widescreen modern standards

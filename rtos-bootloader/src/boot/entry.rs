@@ -4,13 +4,9 @@ use crate::boot::{bootfs, map, open, prepare, framebuffer};
 use crate::boot::console::{write_hex, write_line, clear_screen};
 use crate::rtosk::{parse_header_and_segments, find_magic};
 use crate::boot::aspectratio::AspectRatio;
-
+use rtos_types::{BootInfo, FramebufferInfo, FramebufferFormat};
 use rtoskfmt::constants::RTOSK_MAGIC;
 
-#[repr(C)]
-pub struct BootInfo {
-    pub framebuffer: framebuffer::FramebufferInfo,
-}
 
 pub fn boot_entry() -> uefi::Status {
     clear_screen();
@@ -152,13 +148,13 @@ pub fn boot_entry() -> uefi::Status {
         }
         Err(_) => {
             write_line("BL: WARN no framebuffer");
-            framebuffer::FramebufferInfo {
+            FramebufferInfo {
                 base: 0,
                 size: 0,
                 width: 0,
                 height: 0,
                 stride: 0,
-                format: framebuffer::FramebufferFormat::BltOnly,
+                format: FramebufferFormat::BltOnly,
             }
         }
     };

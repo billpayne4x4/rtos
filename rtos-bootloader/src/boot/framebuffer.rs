@@ -4,24 +4,7 @@ use uefi::{Error, Identify, Status};
 
 use crate::boot::console::{write_hex, write_line};
 use crate::boot::aspectratio::AspectRatio;
-
-#[repr(C)]
-pub struct FramebufferInfo {
-    pub base: u64,
-    pub size: usize,
-    pub width: u32,
-    pub height: u32,
-    pub stride: u32,
-    pub format: FramebufferFormat,
-}
-
-#[repr(u32)]
-#[derive(Copy, Clone)]
-pub enum FramebufferFormat {
-    Bgr = 0,
-    Rgb = 1,
-    BltOnly = 2,
-}
+use rtos_types::{BootInfo, FramebufferInfo, FramebufferFormat};
 
 // ---- helpers ----
 

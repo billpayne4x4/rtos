@@ -1,5 +1,5 @@
 pub mod log_serial;
-pub mod volatile;
+pub mod mmio;
 
 pub use log_serial::SerialWriter;
-pub use volatile::*;
+pub use mmio::*;

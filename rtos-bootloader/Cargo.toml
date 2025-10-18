@@ -4,7 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-x86_64 = "0.15.2"
 uefi = { version = "0.35", default-features = false }
 panic-abort = "0.3.2"
 rtos-types = {path = "../libs/rtos-types"}

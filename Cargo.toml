@@ -5,6 +5,7 @@ members = [
     "rtos",
     "libs/hal",
     "libs/vfs",
+    "libs/rtos-framebuffer",
     "drivers/virtio-blk",
     "file-systems/fat32",
     "tools/rtosk-gen",

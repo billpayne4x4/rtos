@@ -1,10 +1,11 @@
 use core::{cmp::max, slice};
 
-use crate::boot::{bootfs, map, open, prepare, framebuffer};
+use crate::boot::{bootfs, map, open, prepare};
 use crate::boot::console::{write_hex, write_line, clear_screen};
 use crate::rtosk::{parse_header_and_segments, find_magic};
-use crate::boot::aspectratio::AspectRatio;
-use rtos_types::{BootInfo, FramebufferInfo, FramebufferFormat, RTOSK_MAGIC};
+use rtos_framebuffer::framebuffer::Framebuffer;
+use rtos_framebuffer::framebuffer::mode::{pick, aspect::AspectRatio};
+use rtos_types::{boot_info::BootInfo, framebuffer_info::FramebufferInfo, framebuffer_format::FramebufferFormat, constants::RTOSK_MAGIC};
 
 pub fn boot_entry() -> uefi::Status {
     clear_screen();
@@ -134,7 +135,9 @@ pub fn boot_entry() -> uefi::Status {
 
     // --- Framebuffer setup ---
     write_line("BL: init framebuffer");
-    let fb = match framebuffer::get_gop_framebuffer(AspectRatio::Ratio16_9) {
+
+
+    let fb = match Framebuffer::new_from_aspect(AspectRatio::Ratio16_9) {
         Ok(fb) => {
             write_hex("BL: fb.base", fb.base as u64);
             write_hex("BL: fb.size", fb.size as u64);

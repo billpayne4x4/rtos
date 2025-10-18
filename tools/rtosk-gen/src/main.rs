@@ -7,7 +7,7 @@ use std::{
 };
 
 use goblin::elf::{program_header, section_header, Elf};
-use rtos_types::{RTOSK_MAGIC, RtoskHeader, RtoskSegment, RTOSK_EXEC_FLAG};
+use rtos_types::{constants::RTOSK_MAGIC, rtosk_header::RtoskHeader, rtosk_segment::RtoskSegment, constants::RTOSK_EXEC_FLAG};
 
 fn align_up(x: usize, a: usize) -> usize { (x + (a - 1)) & !(a - 1) }
 

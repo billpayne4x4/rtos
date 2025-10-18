@@ -2,14 +2,13 @@
 #![no_main]
 
 mod panic;
-mod kernel;
-mod framebuffer;
+/*mod kernel;
 mod types;
-mod console;
+mod console;*/
 mod utils;
 
-use kernel::kernel_init;
-use rtos_types::{BootInfo, FramebufferInfo, FramebufferFormat};
+//use kernel::kernel_init;
+use rtos_types::{boot_info::BootInfo, framebuffer_info::FramebufferInfo, framebuffer_format::FramebufferFormat};
 use crate::utils::SerialWriter;
 
 
@@ -18,8 +17,8 @@ pub extern "C" fn kmain(bi: *const BootInfo) -> ! {
     SerialWriter::init();
     serial_log!("Kernel initializing...");
 
-    let bi = unsafe { &*bi };
-    let _state = unsafe { kernel_init(bi) };
+    //let bi = unsafe { &*bi };
+    //let _state = unsafe { kernel_init(bi) };
     serial_log!("Kernel initialized.");
 
 

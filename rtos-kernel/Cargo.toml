@@ -7,6 +7,7 @@ edition = "2021"
 x86_64 = "0.15.2"
 lazy_static = { version = "1.4", features = ["spin_no_std"] }
 rtos-types = {path = "../libs/rtos-types"}
+rtos-framebuffer = {path = "../libs/rtos-framebuffer"}
 
 [build-dependencies]
 nasm-rs = "0.3.1"

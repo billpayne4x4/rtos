@@ -1,7 +1,7 @@
 use core::ptr;
 use uefi::boot::{self, AllocateType};
 use uefi::mem::memory_map::MemoryType;
-use rtos_types::{RtoskSegment, RTOSK_EXEC_FLAG};
+use rtos_types::{rtosk_segment::RtoskSegment, constants::RTOSK_EXEC_FLAG};
 use crate::boot::console::{write_hex, write_line};
 
 pub fn map_segments(segments: &[RtoskSegment], image_bytes: &[u8]) -> Result<(), uefi::Status> {

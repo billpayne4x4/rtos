@@ -1,6 +1,6 @@
-use rtos_types::BootInfo;
+/*use rtos_types::BootInfo;
 use crate::kernel::state::KernelState;
-use crate::framebuffer::validate_framebuffer_soft;
+use rtos_framebuffer::framebuffer::validate_framebuffer_soft;
 use crate::serial_log;
 
 pub unsafe fn kernel_init(bi: &BootInfo) -> KernelState {
@@ -20,3 +20,4 @@ pub unsafe fn kernel_init(bi: &BootInfo) -> KernelState {
 
     state
 }
+*/

@@ -8,4 +8,4 @@ name = "rtosk-inspect"
 path = "src/main.rs"
 
 [dependencies]
-rtoskfmt = { path = "../../libs/rtoskfmt" }
+rtos-types = { path = "../../libs/rtos-types" }

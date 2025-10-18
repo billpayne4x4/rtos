@@ -4,9 +4,7 @@ use crate::boot::{bootfs, map, open, prepare, framebuffer};
 use crate::boot::console::{write_hex, write_line, clear_screen};
 use crate::rtosk::{parse_header_and_segments, find_magic};
 use crate::boot::aspectratio::AspectRatio;
-use rtos_types::{BootInfo, FramebufferInfo, FramebufferFormat};
-use rtoskfmt::constants::RTOSK_MAGIC;
-
+use rtos_types::{BootInfo, FramebufferInfo, FramebufferFormat, RTOSK_MAGIC};
 
 pub fn boot_entry() -> uefi::Status {
     clear_screen();

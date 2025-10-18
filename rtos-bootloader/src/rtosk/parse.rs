@@ -1,5 +1,5 @@
 use core::{mem, ptr, slice};
-use rtoskfmt::{RtoskHeader, RtoskSegment, RTOSK_MAGIC};
+use rtos_types::{RtoskHeader, RtoskSegment, RTOSK_MAGIC};
 
 pub fn parse_header(bytes: &[u8]) -> Result<(RtoskHeader, usize), ()> {
     if bytes.len() < mem::size_of::<RtoskHeader>() { return Err(()); }

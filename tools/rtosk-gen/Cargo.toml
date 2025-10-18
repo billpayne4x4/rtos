@@ -8,5 +8,5 @@ name = "rtosk-gen"
 path = "src/main.rs"
 
 [dependencies]
-rtoskfmt = { path = "../../libs/rtoskfmt" }
+rtos-types = { path = "../../libs/rtos-types" }
 goblin = "0.10.2"

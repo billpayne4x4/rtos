@@ -9,7 +9,7 @@ use std::fs::File;
 use std::io::Read;
 use std::mem;
 
-use rtoskfmt::{constants::RTOSK_MAGIC, RtoskHeader, RtoskSegment};
+use rtos_types::{RTOSK_MAGIC, RtoskHeader, RtoskSegment};
 
 #[derive(Debug)]
 struct InspectError(String);

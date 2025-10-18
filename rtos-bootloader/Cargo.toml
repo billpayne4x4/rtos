@@ -6,7 +6,6 @@ edition = "2021"
 [dependencies]
 uefi = { version = "0.35", default-features = false }
 panic-abort = "0.3.2"
-rtoskfmt = { path = "../libs/rtoskfmt" }
 rtos-types = {path = "../libs/rtos-types"}
 
 [build-dependencies]

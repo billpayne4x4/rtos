@@ -1,8 +1,10 @@
 use core::{cmp::max, slice};
 
-use crate::boot::{bootfs, map, open, prepare};
+use crate::boot::{bootfs, map, open, prepare, trampoline::trampoline_jump};
 use crate::boot::console::{write_hex, write_line, clear_screen};
 use crate::rtosk::{parse_header_and_segments, find_magic};
+use crate::serial_writer::SerialWriter;
+use crate::serial_logb;
 use rtos_framebuffer::framebuffer::Framebuffer;
 use rtos_framebuffer::framebuffer::mode::{pick, aspect::AspectRatio};
 use rtos_types::{boot_info::BootInfo, framebuffer_info::FramebufferInfo, framebuffer_format::FramebufferFormat, constants::RTOSK_MAGIC};
@@ -166,18 +168,29 @@ pub fn boot_entry() -> uefi::Status {
         write_line("BL: FATAL header.entry64 = 0");
         return uefi::Status::LOAD_ERROR;
     }
+    write_hex("BL: entry (header.entry64)", entry_ptr as u64);
 
     // Write framebuffer info into BootInfo for the trampoline
     let boot_info_addr = boot_info as *mut BootInfo;
     unsafe { core::ptr::write(boot_info_addr, BootInfo { framebuffer: fb }); }
 
-    extern "win64" { fn jump_to_kernel(entry: usize, stack_top: usize, boot_info: usize) -> !; }
+    // First instruction in kmain:
+    write_line("BL: disabling interrupts");
+    x86_64::instructions::interrupts::disable();
 
-    write_hex("BL: entry (header.entry64)", entry_ptr as u64);
+
     write_line("BL: exiting boot services");
-
     let _ = unsafe { uefi::boot::exit_boot_services(None) };
+    SerialWriter::init();
+    serial_logb!("exited boot services!!!");
 
     // jump
+    extern "win64" { fn jump_to_kernel(entry: usize, stack_top: usize, boot_info: usize) -> !; }
     unsafe { jump_to_kernel(entry_ptr, stack_top, boot_info) }
+
+    //let _ = unsafe { uefi::boot::exit_boot_services(None) };
+    //trampoline_jump(entry_ptr, stack_top, boot_info);
+
+    // Trampoline should not have returned so return device error if it does return
+    uefi::Status::DEVICE_ERROR
 }

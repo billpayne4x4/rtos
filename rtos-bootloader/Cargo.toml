@@ -4,10 +4,13 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+x86_64 = "0.15.2"
 uefi = { version = "0.35", default-features = false }
 panic-abort = "0.3.2"
 rtos-types = {path = "../libs/rtos-types"}
 rtos-framebuffer = {path = "../libs/rtos-framebuffer"}
+x64-utils = {path = "../libs/x64-utils"}
+serial-writer = {path = "../libs/serial-writer"}
 
 [build-dependencies]
 nasm-rs = "0.3.1"
@@ -18,3 +21,11 @@ path = "src/main.rs"
 test = false
 doctest = false
 bench = false
+
+[profile.dev]
+panic = "abort"
+lto = true
+
+[profile.release]
+panic = "abort"
+lto = true

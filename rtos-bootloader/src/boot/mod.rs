@@ -4,3 +4,4 @@ pub mod open;
 pub mod prepare;
 pub mod map;
 pub mod bootfs;
+pub mod trampoline;

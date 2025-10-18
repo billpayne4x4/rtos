@@ -1,29 +1,31 @@
 #![no_std]
 #![no_main]
 
+#[path = "../../libs/serial-writer/src/lib.rs"]
+mod serial_writer;
+
+
 mod panic;
 /*mod kernel;
 mod types;
 mod console;*/
-mod utils;
+//mod utils;
 
 //use kernel::kernel_init;
 use rtos_types::{boot_info::BootInfo, framebuffer_info::FramebufferInfo, framebuffer_format::FramebufferFormat};
-use crate::utils::SerialWriter;
-
+use serial_writer::SerialWriter;
 
 #[no_mangle]
 pub extern "C" fn kmain(bi: *const BootInfo) -> ! {
     SerialWriter::init();
-    serial_log!("Kernel initializing...");
+    serial_logk!("Kernel initializingk...");
 
     //let bi = unsafe { &*bi };
     //let _state = unsafe { kernel_init(bi) };
-    serial_log!("Kernel initialized.");
+    serial_logk!("Kernel initialized.");
 
 
     loop {
         unsafe { core::arch::asm!("hlt", options(nomem, nostack, preserves_flags)); }
     }
 }
-

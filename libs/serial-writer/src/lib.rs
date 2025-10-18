@@ -1,3 +1,6 @@
+#![no_std]
+
+
 use core::fmt::{self, Write};
 
 pub struct SerialWriter;
@@ -5,39 +8,40 @@ pub struct SerialWriter;
 impl SerialWriter {
     const COM1: u16 = 0x3F8;
 
-    #[inline(always)]
+    #[inline(never)]
     unsafe fn outb(port: u16, val: u8) {
         core::arch::asm!(
-        "out dx, al",
+        "outb %al, %dx",
         in("dx") port,
         in("al") val,
-        options(nomem, nostack, preserves_flags)
+        options(nomem, nostack, preserves_flags, att_syntax)
         );
     }
 
-    #[inline(always)]
+    #[inline(never)]
     unsafe fn inb(port: u16) -> u8 {
-        let mut v: u8;
+        let v: u8;
         core::arch::asm!(
-        "in al, dx",
+        "inb %dx, %al",
         out("al") v,
         in("dx") port,
-        options(nomem, nostack, preserves_flags)
+        options(nomem, nostack, preserves_flags, att_syntax)
         );
         v
     }
 
-    #[inline(always)]
+    #[inline(never)]
     fn serial_can_tx() -> bool {
         unsafe { (Self::inb(Self::COM1 + 5) & 0x20) != 0 }
     }
 
-    #[inline(always)]
+    #[inline(never)]
     fn serial_put(b: u8) {
         while !Self::serial_can_tx() {}
         unsafe { Self::outb(Self::COM1, b) }
     }
 
+    #[inline(never)]
     pub fn init() {
         unsafe {
             Self::outb(Self::COM1 + 1, 0x00);
@@ -135,55 +139,72 @@ impl Write for SerialWriter {
         Self::write(s);
         Ok(())
     }
-
-
 }
 
 #[macro_export]
 macro_rules! serial_println {
     () => {{
-        $crate::utils::log_serial::SerialWriter::write("\n");
+        $crate::serial_writer::SerialWriter::write("\n");
     }};
     ($s:literal) => {{
-        $crate::utils::log_serial::SerialWriter::write(concat!($s, "\n"));
+        $crate::serial_writer::SerialWriter::write(concat!($s, "\n"));
     }};
     ($s:literal, $val:expr) => {{
-        $crate::utils::log_serial::SerialWriter::write($s);
-        $crate::utils::log_serial::SerialWriter::write(" ");
-        $crate::utils::log_serial::SerialWriter::write_usize($val as usize);
-        $crate::utils::log_serial::SerialWriter::write("\n");
+        $crate::serial_writer::SerialWriter::write($s);
+        $crate::serial_writer::SerialWriter::write(" ");
+        $crate::serial_writer::SerialWriter::write_usize($val as usize);
+        $crate::serial_writer::SerialWriter::write("\n");
     }};
     ($s:literal, hex $val:expr) => {{
-        $crate::utils::log_serial::SerialWriter::write($s);
-        $crate::utils::log_serial::SerialWriter::write(" ");
-        $crate::utils::log_serial::SerialWriter::write_hex($val as usize);
-        $crate::utils::log_serial::SerialWriter::write("\n");
+        $crate::serial_writer::SerialWriter::write($s);
+        $crate::serial_writer::SerialWriter::write(" ");
+        $crate::serial_writer::SerialWriter::write_hex($val as usize);
+        $crate::serial_writer::SerialWriter::write("\n");
     }};
     ($s:literal, $val1:expr, $val2:expr) => {{
-        $crate::utils::log_serial::SerialWriter::write($s);
-        $crate::utils::log_serial::SerialWriter::write(" ");
-        $crate::utils::log_serial::SerialWriter::write_usize($val1 as usize);
-        $crate::utils::log_serial::SerialWriter::write(" ");
-        $crate::utils::log_serial::SerialWriter::write_usize($val2 as usize);
-        $crate::utils::log_serial::SerialWriter::write("\n");
-    }};
-}
-#[macro_export]
-macro_rules! serial_log {
-    ($s:literal) => {{
-        $crate::utils::log_serial::SerialWriter::write(concat!("K: ", $s, "\n"));
-    }};
-    ($s:literal, $val:expr) => {{
-        $crate::utils::log_serial::SerialWriter::write(concat!("K: ", $s, " "));
-        $crate::utils::log_serial::SerialWriter::write_usize($val as usize);
-        $crate::utils::log_serial::SerialWriter::write("\n");
-    }};
-    ($s:literal, $val1:expr, $val2:expr) => {{
-        $crate::utils::log_serial::SerialWriter::write(concat!("K: ", $s, " "));
-        $crate::utils::log_serial::SerialWriter::write_usize($val1 as usize);
-        $crate::utils::log_serial::SerialWriter::write(" ");
-        $crate::utils::log_serial::SerialWriter::write_usize($val2 as usize);
-        $crate::utils::log_serial::SerialWriter::write("\n");
+        $crate::serial_writer::SerialWriter::write($s);
+        $crate::serial_writer::SerialWriter::write(" ");
+        $crate::serial_writer::SerialWriter::write_usize($val1 as usize);
+        $crate::serial_writer::SerialWriter::write(" ");
+        $crate::serial_writer::SerialWriter::write_usize($val2 as usize);
+        $crate::serial_writer::SerialWriter::write("\n");
     }};
 }
 
+#[macro_export]
+macro_rules! serial_logb {
+    ($s:literal) => {{
+        $crate::serial_writer::SerialWriter::write(concat!("BL: ", $s, "\n"));
+    }};
+    ($s:literal, $val:expr) => {{
+        $crate::serial_writer::SerialWriter::write(concat!("BL: ", $s, " "));
+        $crate::serial_writer::SerialWriter::write_usize($val as usize);
+        $crate::serial_writer::SerialWriter::write("\n");
+    }};
+    ($s:literal, $val1:expr, $val2:expr) => {{
+        $crate::serial_writer::SerialWriter::write(concat!("BL: ", $s, " "));
+        $crate::serial_writer::SerialWriter::write_usize($val1 as usize);
+        $crate::serial_writer::SerialWriter::write(" ");
+        $crate::serial_writer::SerialWriter::write_usize($val2 as usize);
+        $crate::serial_writer::SerialWriter::write("\n");
+    }};
+}
+
+#[macro_export]
+macro_rules! serial_logk {
+    ($s:literal) => {{
+        $crate::serial_writer::SerialWriter::write(concat!("K: ", $s, "\n"));
+    }};
+    ($s:literal, $val:expr) => {{
+        $crate::serial_writer::SerialWriter::write(concat!("K: ", $s, " "));
+        $crate::serial_writer::SerialWriter::write_usize($val as usize);
+        $crate::serial_writer::SerialWriter::write("\n");
+    }};
+    ($s:literal, $val1:expr, $val2:expr) => {{
+        $crate::serial_writer::SerialWriter::write(concat!("K: ", $s, " "));
+        $crate::serial_writer::SerialWriter::write_usize($val1 as usize);
+        $crate::serial_writer::SerialWriter::write(" ");
+        $crate::serial_writer::SerialWriter::write_usize($val2 as usize);
+        $crate::serial_writer::SerialWriter::write("\n");
+    }};
+}

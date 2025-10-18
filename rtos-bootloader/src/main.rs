@@ -1,6 +1,9 @@
 #![no_std]
 #![no_main]
 
+#[path = "../../libs/serial-writer/src/lib.rs"]
+mod serial_writer;
+
 use uefi::Status;
 
 mod boot;

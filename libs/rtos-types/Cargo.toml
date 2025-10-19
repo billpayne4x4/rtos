@@ -10,3 +10,5 @@ crate-type = ["rlib"]
 default = []
 
 [dependencies]
+uefi = { version = "0.35", default-features = false }
+rtos-framebuffer = { path = "../../libs/rtos-framebuffer" }

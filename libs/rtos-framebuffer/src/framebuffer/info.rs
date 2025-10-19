@@ -1,4 +1,4 @@
-use crate::framebuffer_format::FramebufferFormat;
+use crate::framebuffer::format::FramebufferFormat;
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]
 pub struct FramebufferInfo {
@@ -21,7 +21,6 @@ impl Default for FramebufferFormat {
 
 impl FramebufferInfo {
     /// A zeroed/invalid framebuffer descriptor (safe placeholder).
-    #[inline]
     pub const fn empty() -> Self {
         FramebufferInfo {
             base:   0,

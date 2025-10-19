@@ -14,7 +14,6 @@ pub struct RtoskHeader {
 
 impl RtoskHeader {
     /// Creates a zeroed / invalid header.
-    #[inline]
     pub const fn empty() -> Self {
         RtoskHeader {
             magic: [0; 5],
@@ -30,7 +29,6 @@ impl RtoskHeader {
     }
 
     /// Constructs a new header with basic version info and entry point.
-    #[inline]
     pub const fn new(entry64: u64, page_size: u32, seg_count: u32, image_crc32: u32, flags: u32) -> Self {
         RtoskHeader {
             magic: *b"RTOSK",
@@ -46,14 +44,12 @@ impl RtoskHeader {
     }
 
     /// Checks whether the magic field matches "RTOSK".
-    #[inline]
     pub const fn is_valid(&self) -> bool {
         let m = self.magic;
         m[0] == b'R' && m[1] == b'T' && m[2] == b'O' && m[3] == b'S' && m[4] == b'K'
     }
 
     /// Returns the full version as a (major, minor) tuple.
-    #[inline]
     pub const fn version(&self) -> (u16, u16) {
         (self.ver_major, self.ver_minor)
     }

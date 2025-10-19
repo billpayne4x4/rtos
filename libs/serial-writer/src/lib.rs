@@ -1,5 +1,6 @@
 #![no_std]
 
+// todo: fix so i do not have to use #[path = ""] to add this
 
 use core::fmt::{self, Write};
 

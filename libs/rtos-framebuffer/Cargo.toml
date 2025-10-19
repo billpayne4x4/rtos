@@ -11,4 +11,4 @@ default = []
 
 [dependencies]
 uefi = { version = "0.35", default-features = false }
-rtos-types = { path = "../../libs/rtos-types" }
+

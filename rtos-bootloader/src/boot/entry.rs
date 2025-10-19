@@ -1,13 +1,15 @@
+static RTOS_LOGO_TRANSPARENT_RAW: &[u8] = include_bytes!("../../../images/rtos-logo-transparent.raw");
+
 use core::{cmp::max, slice};
-use x64_utils::interrupts;
-use crate::boot::{bootfs, map, open, prepare, trampoline::trampoline_jump};
+use x64_utils::{interrupts, handoff};
+use crate::boot::{bootfs, map, open, prepare, memory};
 use crate::boot::console::{write_hex, write_line, clear_screen};
 use crate::rtosk::{parse_header_and_segments, find_magic};
 use crate::serial_writer::SerialWriter;
 use crate::serial_logb;
-use rtos_framebuffer::framebuffer::Framebuffer;
-use rtos_framebuffer::framebuffer::mode::{pick, aspect::AspectRatio};
-use rtos_types::{boot_info::BootInfo, framebuffer_info::FramebufferInfo, framebuffer_format::FramebufferFormat, constants::RTOSK_MAGIC};
+use rtos_framebuffer::framebuffer::{Framebuffer, mode::{pick, aspect::AspectRatio}, format::FramebufferFormat, info::FramebufferInfo};
+use rtos_framebuffer::graphics::{clear, image::display};
+use rtos_types::{boot_info::BootInfo, constants::RTOSK_MAGIC, constants::HHDM_BASE};
 
 pub fn boot_entry() -> uefi::Status {
     clear_screen();
@@ -138,56 +140,75 @@ pub fn boot_entry() -> uefi::Status {
     // --- Framebuffer setup ---
     write_line("BL: init framebuffer");
 
-
-    let fb = match Framebuffer::new_from_aspect(AspectRatio::Ratio16_9) {
+    let fb: Framebuffer = match Framebuffer::new_from_aspect(AspectRatio::Ratio16_9) {
         Ok(fb) => {
-            write_hex("BL: fb.base", fb.base as u64);
-            write_hex("BL: fb.size", fb.size as u64);
-            write_hex("BL: fb.width", fb.width as u64);
-            write_hex("BL: fb.height", fb.height as u64);
-            write_hex("BL: fb.stride", fb.stride as u64);
-            write_hex("BL: fb.format", fb.format as u32 as u64);
+            let info = &fb.info;
+            write_hex("BL: fb.base",   info.base as u64);
+            write_hex("BL: fb.size",   info.size as u64);
+            write_hex("BL: fb.width",  info.width as u64);
+            write_hex("BL: fb.height", info.height as u64);
+            write_hex("BL: fb.stride", info.stride as u64);
+            write_hex("BL: fb.format", info.format.as_u32() as u64);
             fb
         }
-        Err(_) => {
+        Err(status) => {
             write_line("BL: WARN no framebuffer");
-            FramebufferInfo {
-                base: 0,
-                size: 0,
-                width: 0,
-                height: 0,
-                stride: 0,
-                format: FramebufferFormat::BltOnly,
+            Framebuffer {
+                info: FramebufferInfo {
+                    base: 0,
+                    size: 0,
+                    width: 0,
+                    height: 0,
+                    stride: 0,
+                    format: FramebufferFormat::BltOnly,
+                },
+                status,
             }
         }
     };
 
-    // Verify entry
-    let entry_ptr = header.entry64 as usize;
-    if entry_ptr == 0 {
-        write_line("BL: FATAL header.entry64 = 0");
-        return uefi::Status::LOAD_ERROR;
-    }
-    write_hex("BL: entry (header.entry64)", entry_ptr as u64);
-
-    // Write framebuffer info into BootInfo for the trampoline
-    let boot_info_addr = boot_info as *mut BootInfo;
-    unsafe { core::ptr::write(boot_info_addr, BootInfo { framebuffer: fb }); }
-
+    // Disable interrupts
     write_line("BL: disabling interrupts");
     interrupts::cli();
 
+    // Create BootInfo with the framebuffer
+    let mut bi = BootInfo::from_framebuffer(fb);
+
+    // Collect memory ranges
+    write_line("BL: collecting memory ranges");
+    if let Err(e) = crate::boot::memory::collect_bootinfo_from_uefi_inplace(&mut bi, HHDM_BASE) {
+        write_line("BL: ERROR collect_from_uefi_inplace");
+        loop { unsafe { core::arch::asm!("hlt"); } }
+    }
+
+    // No allocations/frees past this point before ExitBootServices
     write_line("BL: exiting boot services");
-    let _ = unsafe { uefi::boot::exit_boot_services(None) };
+    // In UEFI 0.35, exit_boot_services returns MemoryMapOwned directly (no Result)
+    // and takes Option<MemoryType> for the memory type to use for the internal buffer
+    let _mmap = unsafe {
+        uefi::boot::exit_boot_services(Some(uefi::mem::memory_map::MemoryType::LOADER_DATA))
+    };
+
     SerialWriter::init();
 
-    // jump
-    //extern "win64" { fn jump_to_kernel(entry: usize, stack_top: usize, boot_info: usize) -> !; }
-    //unsafe { jump_to_kernel(entry_ptr, stack_top, boot_info) }
+    // Clear the screen with #002863 → (0, 40, 99)
+    unsafe { bi.framebuffer.clear_rgb(0u8, 40u8, 99u8); }
 
-    serial_logb!("entering trampoline");
-    trampoline_jump(entry_ptr, stack_top, boot_info);
+    // Display the logo
+    unsafe {
+        bi.framebuffer.render_image(
+            RTOS_LOGO_TRANSPARENT_RAW,
+            1024,
+            1024,
+            FramebufferFormat::Rgba,
+            (bi.framebuffer.info.width / 2 - 1024 / 2) as usize,
+            (bi.framebuffer.info.height / 2 - 1024 / 2) as usize,
+        )
+    }
 
-    // Trampoline should not have returned so return device error if it does return
+    // Jump to kernel with the complete BootInfo
+    unsafe { handoff::sysv(header.entry64 as usize, stack_top, boot_info) }
+
+    // Shouldn't return
     uefi::Status::DEVICE_ERROR
 }

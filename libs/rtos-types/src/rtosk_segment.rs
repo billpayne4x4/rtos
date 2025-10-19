@@ -12,7 +12,6 @@ pub struct RtoskSegment {
 
 impl RtoskSegment {
     /// Creates an empty (zeroed) segment descriptor.
-    #[inline]
     pub const fn empty() -> Self {
         RtoskSegment {
             file_offset: 0,
@@ -24,7 +23,6 @@ impl RtoskSegment {
     }
 
     /// Constructs a new segment descriptor.
-    #[inline]
     pub const fn new(file_offset: u64, memory_addr: u64, memory_size: u64, file_size: u64, flags: u32) -> Self {
         RtoskSegment {
             file_offset,
@@ -36,13 +34,11 @@ impl RtoskSegment {
     }
 
     /// Returns true if the segment has nonzero memory and file size.
-    #[inline]
     pub const fn is_loadable(&self) -> bool {
         self.memory_size > 0 && self.file_size > 0
     }
 
     /// Returns true if the segment is marked executable.
-    #[inline]
     pub const fn is_executable(&self) -> bool {
         (self.flags & RTOSK_EXEC_FLAG) != 0
     }

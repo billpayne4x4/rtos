@@ -13,3 +13,7 @@ rustflags = [
 # Use the system GNU linker explicitly (works great for this bare-metal target).
 # If you prefer LLD and have it installed, you can use: linker = "ld.lld"
 linker = "x86_64-linux-gnu-ld"
+
+[unstable]
+build-std = ["core", "compiler_builtins", "alloc"]
+build-std-features = ["compiler-builtins-mem"]
